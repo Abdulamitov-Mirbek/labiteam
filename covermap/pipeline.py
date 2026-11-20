@@ -1,4 +1,5 @@
 """Сборка результата: от файлов с данными до result.json, отчёта и карты."""
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
@@ -25,6 +26,8 @@ class Report:
     night_cells: list[analysis.Cell]
     day_count: int
     night_count: int
+    brute_ms: float = 0.0
+    greedy_ms: float = 0.0
 
     @property
     def red(self) -> list[analysis.Cell]:
@@ -58,8 +61,15 @@ class Report:
                 "sites": list(self.brute.sites),
                 "covered": len(self.brute.covered),
                 "pairs_checked": allowed * (allowed - 1) // 2,
+                "pairs_total": len(self.candidates) * (len(self.candidates) - 1) // 2,
+                "ms": round(self.brute_ms, 3),
             },
-            "greedy": {"sites": list(self.greedy.sites), "covered": len(self.greedy.covered)},
+            "greedy": {
+                "sites": list(self.greedy.sites),
+                "covered": len(self.greedy.covered),
+                "ms": round(self.greedy_ms, 3),
+            },
+            "algorithms_agree": self.brute.sites == self.greedy.sites,
             "night_hours": list(analysis.NIGHT_HOURS),
             "periods": {
                 "day": _period(self.day_cells, self.day_count),
@@ -77,6 +87,16 @@ def _period(cells: list[analysis.Cell], measurements: int) -> dict:
     }
 
 
+def _timed(function, *args, repeats: int = 5):
+    """Результат функции и лучшее время из нескольких запусков, мс."""
+    best = float("inf")
+    for _ in range(repeats):
+        started = time.perf_counter()
+        result = function(*args)
+        best = min(best, (time.perf_counter() - started) * 1000)
+    return result, best
+
+
 def build(measurements: Path, towers: Path, candidates: Path, bounds: Path) -> Report:
     area = Bounds.load(bounds)
     cleaned = clean(measurements, area)
@@ -87,6 +107,8 @@ def build(measurements: Path, towers: Path, candidates: Path, bounds: Path) -> R
     red = [c for c in cells if c.color == "red"]
     cover = analysis.coverage(allowed, red, area)
     day, night = analysis.split_day_night(cleaned.measurements)
+    brute, brute_ms = _timed(analysis.best_pair, cover)
+    greedy, greedy_ms = _timed(analysis.greedy_pair, cover)
     return Report(
         bounds=area,
         cleaned=cleaned,
@@ -97,10 +119,12 @@ def build(measurements: Path, towers: Path, candidates: Path, bounds: Path) -> R
         candidates=candidate_sites,
         allowed=allowed,
         cover=cover,
-        brute=analysis.best_pair(cover),
-        greedy=analysis.greedy_pair(cover),
+        brute=brute,
+        greedy=greedy,
         day_cells=analysis.aggregate(day, area)[0],
         night_cells=analysis.aggregate(night, area)[0],
         day_count=len(day),
         night_count=len(night),
+        brute_ms=brute_ms,
+        greedy_ms=greedy_ms,
     )

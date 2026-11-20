@@ -3,271 +3,626 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Карта покрытия</title>
+<title>LABI · Сигнал.kg</title>
+<style>/*FONTS_CSS*/</style>
 <style>/*LEAFLET_CSS*/</style>
 <style>
-  :root { --green:#2e9e5b; --yellow:#e2b21c; --red:#d63b3b; --ink:#1c2026; --muted:#667080; --line:#e2e5ea; }
-  html, body { height:100%; margin:0; }
-  body { display:flex; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
-  #panel { width:340px; flex:none; overflow-y:auto; padding:18px 18px 28px; border-right:1px solid var(--line); background:#fff; box-sizing:border-box; }
-  #map { flex:1; background:#eef0f3; }
-  h1 { font-size:19px; margin:0 0 2px; }
-  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:22px 0 8px; font-weight:600; }
-  .sub { color:var(--muted); font-size:13px; }
-  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .tile { border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
-  .tile b { display:block; font-size:21px; font-variant-numeric:tabular-nums; line-height:1.2; }
-  .tile span { color:var(--muted); font-size:12px; }
-  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
-  td, th { padding:4px 0; text-align:left; border-bottom:1px solid var(--line); font-weight:400; }
-  th { color:var(--muted); font-size:12px; }
-  td.num, th.num { text-align:right; }
-  tr:last-child td { border-bottom:0; }
-  .dot { display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:7px; vertical-align:-1px; }
-  .note { color:var(--muted); font-size:12.5px; margin:8px 0 0; }
-  .win { font-weight:600; }
-  .site-label, .cell-label { background:none; border:0; box-shadow:none; font-weight:700; font-size:12px; color:var(--ink);
-                 text-shadow:0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
-  .site-label::before, .cell-label::before { display:none; }
-  .leaflet-control-layers { font-size:13px; }
-  @media (max-width: 760px) { body { flex-direction:column; } #panel { width:auto; max-height:45%; border-right:0; border-bottom:1px solid var(--line); } }
+:root{color-scheme:light;
+--bg:#f3f4f6;--card:#fff;--line:#e5e7eb;--ink:#111827;--muted:#6b7280;--soft:#f6f7f9;--nav:#111a2e;
+--blue:#2563eb;--indigo:#4338ca;--green:#1f9d55;--yellow:#e3a92b;--red:#d93636;--deep:#7a1f2b;--orange:#ea580c;
+--pinkbg:#fdeeee;--yelbg:#fff8e6;--grnbg:#eefaf2;--yelink:#8a5a07}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip;display:flex;flex-direction:column}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px}
+nav{background:var(--nav);color:#fff;display:flex;align-items:center;gap:6px;padding:10px max(2vw,16px);flex-wrap:wrap;flex:none}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;margin-right:18px}
+.logo{width:30px;height:30px;border-radius:8px;background:var(--blue);display:grid;place-items:center}
+nav a{color:#d6dbe6;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:500}
+nav a.on{background:#24304a;color:#fff}
+.status{margin-left:auto;color:#cfd6e3;font-size:13px;display:flex;align-items:center;gap:8px}
+.live{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block}
+.live.off{background:#94a3b8}
+.btn{font:600 14px Inter,system-ui,sans-serif;border-radius:8px;padding:10px 16px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;min-height:40px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.dark{background:#fff;color:var(--nav);border-color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,nav a:focus-visible,.seg button:focus-visible,.site:focus-visible{outline:3px solid #93b4ff;outline-offset:2px}
+main{flex:1;min-height:0;overflow:auto}
+.view{display:none}.view.on{display:block}
+#v-map.on{height:100%}
+.page{max-width:1240px;margin:0 auto;padding:28px max(3vw,16px) 40px}
+h1{font-size:clamp(26px,3vw,32px);line-height:1.1;letter-spacing:-.02em;margin:0 0 4px}
+h2{font-size:17px;margin:0}
+.sub{color:var(--muted);font-size:13.5px}
+.label{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin:18px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.pad{padding:16px 18px}
+.row{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(11em,1fr));gap:12px;margin:18px 0}
+.stat b{display:block;font-size:30px;font-weight:700;line-height:1.15}
+.stat small{color:var(--muted);font-size:12.5px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{border-radius:12px;padding:12px 14px;border:1px solid}
+.tile b{display:block;font-size:26px;font-weight:700}
+.tile span{font-size:12.5px;line-height:1.3;display:block}
+.t-red{background:var(--pinkbg);border-color:#f3c4c4;color:var(--red)}
+.t-yel{background:var(--yelbg);border-color:#f3dca6;color:var(--yelink)}
+.t-grn{background:var(--grnbg);border-color:#bfe5cd;color:var(--green)}
+.t-gry{background:var(--soft);border-color:var(--line);color:var(--ink)}
+.bar{display:flex;height:6px;border-radius:4px;overflow:hidden;margin:12px 0 6px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{color:var(--muted);font-weight:500;font-size:12.5px;text-align:left;padding:9px 12px;background:var(--soft)}
+td{padding:10px 12px;border-top:1px solid var(--line)}
+.num{text-align:right;white-space:nowrap}
+.neg{color:var(--red);font-weight:600}
+.scroll{overflow-x:auto}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-green{background:var(--grnbg);color:var(--green)}.p-red{background:var(--pinkbg);color:var(--red)}
+.p-yel{background:var(--yelbg);color:var(--yelink)}.p-gry{background:var(--soft);color:var(--muted)}
+.p-blue{background:#e8eefc;color:var(--blue)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:1px}
+.empty{padding:28px 18px;color:var(--muted);text-align:center}
+/* вкладка «Карта» */
+.mapview{display:grid;grid-template-columns:340px minmax(0,1fr);height:100%;min-height:620px}
+.side{background:var(--card);border-right:1px solid var(--line);padding:20px 18px 28px;overflow-y:auto}
+.mapbox{position:relative;min-height:620px}
+#map{position:absolute;inset:0;background:#ecebe6}
+.float{position:absolute;z-index:500;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(15,23,42,.08)}
+.layers{top:14px;right:14px;width:250px;padding:12px 14px}
+.layers label{display:flex;gap:10px;align-items:center;font-size:13.5px;padding:5px 0;cursor:pointer}
+.layers input{width:17px;height:17px;accent-color:var(--blue);flex:none}
+.seg{display:flex;background:var(--soft);border-radius:9px;padding:3px;gap:2px}
+.seg button{flex:1;border:0;background:none;font:500 13.5px Inter,system-ui,sans-serif;color:var(--muted);padding:7px 10px;border-radius:7px;cursor:pointer;min-height:34px}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.legend{right:14px;bottom:24px;padding:10px 14px;font-size:13px}
+.legend div{display:flex;align-items:center;gap:8px;padding:2px 0}
+.sq{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
+.cta{left:14px;bottom:24px}
+.leaflet-top.leaflet-left .leaflet-control-zoom{border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 6px 20px rgba(15,23,42,.08);margin:14px 0 0 14px}
+.leaflet-control-zoom a{width:40px!important;height:40px!important;line-height:40px!important;color:var(--ink)!important;font-size:18px!important}
+.leaflet-container{font-family:Inter,system-ui,sans-serif}
+.site{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;border:1px solid #c7c3ef;background:#f3f2fc;margin-bottom:8px;cursor:pointer;width:100%;text-align:left;font:inherit;color:inherit}
+.site.pick{border-color:#f6b98e;background:#fdf3ec}
+.chip{background:var(--indigo);color:#fff;font-weight:700;font-size:12.5px;border-radius:7px;padding:6px 7px;white-space:nowrap}
+.site.pick .chip{background:var(--orange)}
+.site b{display:block;font-size:14px}.site small{color:var(--muted);font-size:12px}
+.site .big{margin-left:auto;font-size:22px;font-weight:700;color:var(--indigo)}
+.site.pick .big{color:var(--orange)}
+.note{color:var(--muted);font-size:12.5px;margin:6px 0 0}
+.alert{color:var(--orange);font-size:13px;margin:8px 0 0}
+/* значки на карте */
+.cand{width:22px;height:22px}
+.cand i{position:absolute;inset:3px;transform:rotate(45deg);border-radius:3px;border:2.5px solid var(--indigo);background:#fff}
+.cand.big{width:30px;height:30px}
+.cand.chosen i{background:var(--indigo);border-color:#fff;box-shadow:0 0 0 1.5px var(--indigo)}
+.cand.mine i{background:var(--orange);border-color:#fff;box-shadow:0 0 0 1.5px var(--orange)}
+.cand.no i{background:#c9cdd3;border-color:#8b919c}
+.tag span{position:absolute;left:0;top:0;transform:translate(-50%,-40px);background:var(--indigo);color:#fff;font:700 12px Inter,system-ui,sans-serif;border-radius:6px;padding:3px 6px;white-space:nowrap}
+.tag.mine span{background:var(--orange)}
+.rank{font:800 16px Inter,system-ui,sans-serif;color:#1b0509;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;width:auto!important;height:auto!important}
+.cmp{width:16px;height:16px;border-radius:50%;background:var(--orange);border:2.5px solid #fff;box-shadow:0 0 0 1px var(--orange)}
+.cmp.new{animation:pulse 1.2s ease-out 4}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(234,88,12,.7)}100%{box-shadow:0 0 0 18px rgba(234,88,12,0)}}
+/* жалобы, плагин, данные */
+.two{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.half{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;margin-top:16px}
+.darkcard{background:var(--nav);color:#e7ebf3;border-radius:12px;padding:18px}
+.darkcard h2{color:#fff}
+.darkcard p{color:#c3cbdb;font-size:14px}
+ol{padding-left:20px;margin:8px 0 0}ol li{margin-bottom:6px;font-size:14px}
+.browser{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.addr{display:flex;gap:6px;align-items:center;padding:10px 12px;background:var(--soft);border-bottom:1px solid var(--line)}
+.addr i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.addr span{margin-left:10px;flex:1;background:var(--card);border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:13px;color:var(--muted)}
+.ad{padding:22px}
+.photo{height:170px;border-radius:10px;background:linear-gradient(135deg,#dfe6ee,#c8d3df);display:grid;grid-template-columns:2fr 1fr;gap:6px;padding:6px}
+.photo div{border-radius:7px;background:#eef2f6}
+.badge{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-left:6px solid var(--c);border-radius:10px;padding:10px 14px;margin:14px 0;background:var(--card)}
+.badge .t{flex:1;min-width:200px;font-size:14px}.badge small{display:block;color:var(--muted);font-size:12px}
+.badge button{font:500 13px Inter,system-ui,sans-serif;border:1px solid var(--ink);background:var(--card);color:var(--ink);border-radius:7px;padding:6px 10px;cursor:pointer;min-height:34px}
+.sources{display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:12px}
+pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBrains Mono",ui-monospace,monospace;overflow-x:auto;margin:10px 0 0}
+.phone{width:340px;height:700px;border:10px solid #111a2e;border-radius:38px;overflow:hidden;background:var(--bg);box-shadow:0 10px 30px rgba(15,23,42,.15)}
+.phone iframe{width:100%;height:100%;border:0;display:block}
+.phone .empty{height:100%;display:grid;place-content:center;padding:24px}
+.sample{color:var(--muted);font-size:12.5px;padding:10px 12px;border-top:1px solid var(--line)}
+.hbar{height:8px;border-radius:4px;background:var(--blue)}
+@media(max-width:900px){.phone{width:300px;height:620px;margin:0 auto}.mapview{grid-template-columns:1fr;height:auto}.side{border-right:0;border-bottom:1px solid var(--line)}.two,.half{grid-template-columns:1fr}}
+@media(max-width:600px){.layers{position:static;width:auto;margin:12px}.status span{display:none}.legend{display:none}th,td{padding:8px 6px;font-size:13px}.mapbox{min-height:460px}}
 </style>
 </head>
 <body>
-<aside id="panel">
-  <h1>Карта покрытия</h1>
-  <div class="sub" id="subtitle"></div>
+<nav>
+  <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a8 8 0 0 1 12 0M4.5 9.5a4.5 4.5 0 0 1 7 0" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="8" cy="12" r="1.6" fill="#fff"/></svg></span>LABI · Сигнал.kg</div>
+  <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#app" data-v="app">Приложение</a><a href="#data" data-v="data">Данные</a>
+  <div class="status"><i class="live" id="live-dot"></i><span id="live-text"></span><button class="btn" id="install-panel" hidden style="background:#24304a;border-color:#24304a;color:#fff">Установить панель</button><button class="btn dark" id="export">Скопировать result.json</button></div>
+</nav>
+<main>
+<section class="view" id="v-map">
+  <div class="mapview">
+    <aside class="side">
+      <h1 style="font-size:24px">Карта покрытия · Бишкек</h1>
+      <div class="sub" id="m-sub"></div>
+      <div class="tiles" style="margin-top:14px" id="m-tiles"></div>
+      <div class="bar" id="m-bar"></div>
+      <p class="note" id="m-cellnote"></p>
+      <div class="label">Худшие квадраты</div>
+      <div class="card" style="overflow:hidden"><table id="m-worst"><tr><th>Квадрат</th><th class="num">Медиана, дБм</th><th class="num">Замеров</th></tr></table></div>
+      <p class="note">Нажмите строку — карта покажет квадрат.</p>
+      <div class="label">Площадки для новых БС</div>
+      <div class="seg" id="m-mode"><button data-m="answer" class="on">Ответ алгоритма</button><button data-m="game">Поставь вышки сам</button></div>
+      <div id="m-sites" style="margin-top:10px"></div>
+    </aside>
+    <div class="mapbox">
+      <div id="map"></div>
+      <div class="float layers">
+        <div class="label" style="margin-top:0">Сетка</div>
+        <div class="seg" id="m-grid"><button data-g="all" class="on">Все</button><button data-g="day">День</button><button data-g="night">Ночь</button></div>
+        <div class="label">Слои</div>
+        <div id="m-layers"></div>
+      </div>
+      <div class="float legend">
+        <div><i class="sq" style="background:var(--green)"></i>Хороший (≥ −90 дБм)</div>
+        <div><i class="sq" style="background:var(--yellow)"></i>Средний (−105…−90)</div>
+        <div><i class="sq" style="background:var(--red)"></i>Слабый (&lt; −105)</div>
+        <div><i class="sq" style="background:var(--deep)"></i>Слабый, закроет новая БС</div>
+        <div><i class="sq" style="background:var(--orange);border-radius:50%"></i>Жалоба жителя</div>
+      </div>
+      <a class="float cta btn primary" href="#complaints" style="border:0">Жалобы жителей: <span id="m-ccount" style="margin-left:4px">0</span>&nbsp;→</a>
+    </div>
+  </div>
+</section>
 
-  <h2>Сетка 200 × 200 м</h2>
-  <div class="tiles" id="tiles"></div>
-  <p class="note" id="grid-note"></p>
+<section class="view" id="v-complaints"><div class="page">
+  <div class="row"><div><h1>Жалобы из плагина</h1><div class="sub">Житель нажал «Здесь нет связи» в объявлении — точка с координатами дома приходит на панель.</div></div>
+  <a class="btn primary" href="#map">Показать на карте</a></div>
+  <div class="stats" id="c-stats"></div>
+  <div class="two">
+    <div class="card" style="overflow:hidden">
+      <div class="row pad"><h2>Последние жалобы</h2><div class="seg" id="c-filter" style="width:330px;max-width:100%"><button data-f="all" class="on">Все</button><button data-f="red">В слабых зонах</button><button data-f="cover">Закроет БС</button></div></div>
+      <div class="scroll"><table id="c-table"></table></div>
+      <div class="empty" id="c-empty"></div>
+    </div>
+    <div>
+      <div class="card pad"><h2>Как принимается жалоба</h2><ol>
+        <li>Координаты берутся из объявления, а не у пользователя.</li>
+        <li>Точка должна быть внутри района замеров.</li>
+        <li>Не больше 5 жалоб в минуту с одного IP.</li>
+        <li>Хранятся только время, точка, квадрат и сайт объявления — без персональных данных.</li></ol></div>
+      <div class="darkcard" style="margin-top:12px" id="c-hot"></div>
+    </div>
+  </div>
+</div></section>
 
-  <h2>Худшие квадраты</h2>
-  <table id="worst"></table>
+<section class="view" id="v-plugin"><div class="page">
+  <h1>Chrome-плагин для жителей</h1><div class="sub">Плашка появляется под заголовком объявления о квартире на house.kg и lalafo.kg.</div>
+  <div class="two" style="margin-top:18px">
+    <div class="browser">
+      <div class="addr"><i></i><i></i><i></i><span>house.kg/details/… · пример объявления</span></div>
+      <div class="ad">
+        <div class="photo"><div></div><div></div></div>
+        <h2 style="font-size:22px;margin-top:16px">2-комн. кв., 54 м², Раззакова / Боконбаева</h2>
+        <div id="p-main"></div>
+        <div class="row" style="justify-content:flex-start;gap:24px;color:var(--muted);font-size:14px"><span><b style="color:var(--ink);font-size:20px">45 000 сом</b> / мес</span><span>3 этаж из 9</span><span>Свободна с 1 декабря</span></div>
+        <p class="note">Объявление — пример; плашка посчитана по настоящим замерам для этого адреса.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card pad"><h2>Состояния плашки</h2><div id="p-states"></div><p class="note">Цвет полосы совпадает с цветом квадрата на карте.</p></div>
+      <div class="card pad" style="margin-top:12px"><h2>Установка</h2><ol>
+        <li>chrome://extensions → режим разработчика.</li><li>«Загрузить распакованное» → папка extension.</li><li>Запустить сервер: python -m server.</li></ol></div>
+    </div>
+  </div>
+</div></section>
 
-  <h2>Площадки для новых БС</h2>
-  <table id="pair"></table>
-  <p class="note" id="pair-note"></p>
+<section class="view" id="v-app"><div class="page">
+  <h1>Приложение для жителей</h1><div class="sub">Сайт, который ставится на главный экран телефона и работает как программа: качество связи в вашем квадрате и жалоба «Здесь нет связи».</div>
+  <div class="two" style="margin-top:18px;grid-template-columns:auto minmax(0,1fr)">
+    <div class="phone" id="a-phone"></div>
+    <div>
+      <div class="card pad"><h2>Установить на телефон</h2><ol>
+        <li>Запустите сервер для локальной сети: <span class="mono">python -m server --host 0.0.0.0</span></li>
+        <li>Откройте на телефоне в Chrome адрес приложения: <b class="mono" id="a-url">…/app/</b></li>
+        <li>Меню ⋮ → «Установить приложение». На iPhone: «Поделиться» → «На экран „Домой“».</li></ol>
+        <p class="note">Браузер даёт установку и геолокацию только по HTTPS или на localhost. По адресу в локальной сети включите в Chrome на телефоне флаг «Insecure origins treated as secure» для этого адреса или откройте сервер через HTTPS.</p></div>
+      <div class="card pad" style="margin-top:12px"><h2>Что умеет</h2><ol>
+        <li>«Связь здесь» — медиана сигнала в вашем квадрате 200 × 200 м, днём и ночью, слабая зона рядом.</li>
+        <li>«Здесь нет связи» — жалоба с координатами сразу появляется на вкладке «Жалобы».</li>
+        <li>Без сети жалобы ждут в очереди и уходят сами, когда сеть появится.</li></ol>
+        <p class="note">Уровень сигнала телефона (RSRP) браузер сайтам не отдаёт, поэтому приложение показывает данные карты, а не меряет сигнал само.</p></div>
+      <div class="darkcard" style="margin-top:12px"><h2>Панель тоже ставится как программа</h2><p>В Chrome на компьютере: значок установки в адресной строке или кнопка «Установить панель» в шапке.</p></div>
+    </div>
+  </div>
+</div></section>
 
-  <h2>Жадный алгоритм и полный перебор</h2>
-  <table id="algo"></table>
-  <p class="note" id="algo-note"></p>
-
-  <h2>День и ночь</h2>
-  <table id="daynight"></table>
-  <p class="note" id="daynight-note"></p>
-
-  <h2>Очистка данных</h2>
-  <table id="dropped"></table>
-</aside>
-<div id="map"></div>
+<section class="view" id="v-data"><div class="page">
+  <div class="row"><div><h1>Данные и алгоритмы</h1><div class="sub">Из чего строится карта и как выбраны площадки.</div></div><button class="btn primary" id="export2">Скопировать result.json</button></div>
+  <div class="label">Источники данных</div>
+  <div class="sources" id="d-sources"></div>
+  <div class="half">
+    <div class="card" style="overflow:hidden"><div class="pad"><h2 id="d-droptitle"></h2></div><table id="d-clean"></table></div>
+    <div>
+      <div class="card" style="overflow:hidden"><div class="pad"><h2>Жадный алгоритм и полный перебор</h2></div><div class="scroll"><table id="d-algo"></table></div><p class="note" style="margin:0;padding:10px 18px 16px" id="d-algonote"></p></div>
+      <div class="card" style="overflow:hidden;margin-top:12px"><div class="pad"><h2>День и ночь</h2></div><div class="scroll"><table id="d-dn"></table></div></div>
+    </div>
+  </div>
+  <div class="card pad" style="margin-top:16px"><div class="row"><h2>result.json — ответ для жюри</h2><span class="pill p-blue">сетка 200 × 200 м · полный перебор</span></div><pre id="d-json"></pre></div>
+</div></section>
+</main>
 
 <script>/*LEAFLET_JS*/</script>
 <script>/*HEAT_JS*/</script>
 <script>
+{
+// Строки из CSV (ID площадок и БС) и ответы API попадают в разметку только через esc().
 const DATA = __DATA__;
-const COLORS = { green: "#2e9e5b", yellow: "#e2b21c", red: "#d63b3b" };
-const COLOR_NAMES = { green: "Зелёные (≥ −90 дБм)", yellow: "Жёлтые (−105…−90)", red: "Красные (< −105), слабая зона" };
-const REASONS = {
-  duplicate: "дубли", out_of_bounds: "координаты вне района", rsrp_out_of_range: "RSRP вне −140…−44",
-  empty_row: "пустые строки", not_a_number: "нечисловые значения", malformed_row: "не хватает полей",
-  bad_timestamp: "неверное время",
-};
-const fmt = n => String(n).replace("-", "−");
-
-function el(tag, text, cls) {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (cls) node.className = cls;
-  return node;
-}
-function row(table, cells, tag = "td") {
-  const tr = el("tr");
-  cells.forEach((c, i) => {
-    const cell = c instanceof Node ? c : el(tag, c);
-    if (i > 0 && !(c instanceof Node)) cell.classList.add("num");
-    tr.append(cell);
-  });
-  table.append(tr);
-  return tr;
-}
-
-// --- панель -----------------------------------------------------------------
 const S = DATA.summary;
-document.getElementById("subtitle").textContent =
-  `${S.clean_rows} замеров после очистки из ${S.total_rows}`;
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+const fmt = n => String(n).replace("-", "−");
+const color = m => m >= -90 ? "green" : m < -105 ? "red" : "yellow";
+const HEX = { green: "#1f9d55", yellow: "#e3a92b", red: "#d93636", deep: "#7a1f2b", orange: "#ea580c", indigo: "#4338ca" };
+const covered = new Set(DATA.covered);
+const byId = Object.fromEntries(DATA.candidates.map(c => [c.id, c]));
+const best = DATA.candidates.filter(c => c.chosen);
+const medianOf = Object.fromEntries(DATA.grids.all.map(c => [c.id, c.median]));
+const result = { worst_cells: DATA.worst.map(w => ({ cell_id: w.id, rsrp_median: w.median })),
+  best_candidates: S.brute.sites, dropped_rows: S.dropped_rows, covered_weak_cells: S.covered_weak_cells };
 
-const tiles = document.getElementById("tiles");
-for (const [value, label, color] of [
-  [S.colors.red, "красных (слабых)", COLORS.red],
-  [S.colors.yellow, "жёлтых", COLORS.yellow],
-  [S.colors.green, "зелёных", COLORS.green],
-  [S.dropped_rows, "строк отброшено", null],
-]) {
-  const tile = el("div", undefined, "tile");
-  const b = el("b", value);
-  if (color) b.style.color = color;
-  tile.append(b, el("span", label));
-  tiles.append(tile);
+/* --- вкладки --- */
+const VIEWS = ["map", "complaints", "plugin", "app", "data"];
+let map;
+function route() {
+  const v = (location.hash || "#map").slice(1);
+  const name = VIEWS.includes(v) ? v : "map";
+  document.querySelectorAll(".view").forEach(s => s.classList.toggle("on", s.id === "v-" + name));
+  document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.dataset.v === name));
+  if (name === "map" && map) setTimeout(() => map.invalidateSize(), 0);
 }
-document.getElementById("grid-note").textContent =
-  `Замеры есть в ${S.cells_with_data} клетках; ${S.cells_skipped} из них содержат меньше ${S.min_samples} замеров и не учитываются.`;
+addEventListener("hashchange", route);
+route();
 
-const worst = document.getElementById("worst");
-row(worst, ["Квадрат", "Медиана, дБм", "Замеров"], "th");
-for (const c of DATA.worst) row(worst, [c.id, fmt(c.median), c.samples]);
-
-const pair = document.getElementById("pair");
-row(pair, ["Площадка", "Красных в 1 км"], "th");
-for (const c of DATA.candidates.filter(c => c.chosen)) row(pair, [c.id, c.covers]);
-const totalRow = row(pair, ["Вместе, без двойного учёта", S.covered_weak_cells]);
-totalRow.classList.add("win");
-document.getElementById("pair-note").textContent =
-  `Покрыто ${S.covered_weak_cells} из ${S.colors.red} красных квадратов. Допустимых площадок ${S.allowed_candidates} из ${DATA.candidates.length}: остальные ближе 500 м к существующей БС.`;
-
-const algo = document.getElementById("algo");
-row(algo, ["Алгоритм", "Пара", "Покрыто"], "th");
-row(algo, ["Полный перебор", S.brute.sites.join(" + "), S.brute.covered]);
-row(algo, ["Жадный", S.greedy.sites.join(" + "), S.greedy.covered]);
-document.getElementById("algo-note").textContent = S.brute.covered > S.greedy.covered
-  ? `Жадный выбор теряет ${S.brute.covered - S.greedy.covered} кв.: он берёт лучшую одиночную площадку и уже не пересматривает её. Перебор проверил ${S.brute.pairs_checked} пар.`
-  : `На этих данных жадный выбор даёт то же покрытие, что и перебор (${S.brute.pairs_checked} пар).`;
-
-const dn = document.getElementById("daynight");
-row(dn, ["", "Замеров", "Клеток", "Красных", "Медиана"], "th");
-for (const key of ["day", "night"]) {
-  const p = S.periods[key];
-  row(dn, [key === "day" ? "День" : "Ночь", p.measurements, p.cells, p.red, p.median === null ? "—" : fmt(p.median)]);
-}
-document.getElementById("daynight-note").textContent =
-  `Ночь — ${S.night_hours[0]}:00–0${S.night_hours[1]}:00 местного времени. Слои «День» и «Ночь» переключаются на карте.`;
-
-const dropped = document.getElementById("dropped");
-row(dropped, ["Причина", "Строк"], "th");
-for (const [reason, count] of Object.entries(S.dropped).sort((a, b) => b[1] - a[1]))
-  row(dropped, [REASONS[reason] || reason, count]);
-row(dropped, ["Всего отброшено", S.dropped_rows]).classList.add("win");
-
-// --- карта -------------------------------------------------------------------
-const map = L.map("map", { preferCanvas: true });
-const B = DATA.bounds;
-map.fitBounds([[B.lat_min, B.lon_min], [B.lat_max, B.lon_max]], { padding: [20, 20] });
-// Подложка: растровые тайлы 2ГИС. Если они не отдаются (нет доступа, сбой),
-// карта один раз переключается на запасную подложку Esri. Обе работают и для
-// страницы, открытой как локальный файл. Незагруженный тайл остаётся пустым.
-const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
-const esri = L.tileLayer(
-  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-  { maxZoom: 19, attribution: "Tiles &copy; Esri", errorTileUrl: BLANK });
-const dgis = L.tileLayer(
-  "https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1" + (DATA.dgis_key ? "&key=" + encodeURIComponent(DATA.dgis_key) : ""),
-  { maxZoom: 18, subdomains: "0123", attribution: "&copy; 2ГИС", errorTileUrl: BLANK });
-// Переключение только если 2ГИС недоступен целиком: ни одного загруженного
-// тайла и несколько ошибок подряд. Единичный сбой тайла подложку не меняет.
-let dgisLoaded = 0, dgisErrors = 0;
-dgis.on("tileload", () => { dgisLoaded++; });
-dgis.on("tileerror", () => {
-  if (++dgisErrors >= 4 && dgisLoaded === 0 && map.hasLayer(dgis)) {
-    map.removeLayer(dgis);
-    esri.addTo(map).bringToBack();
+async function exportResult(button) {
+  const text = JSON.stringify(result, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Скопировано";
+  } catch (e) {
+    // Буфер обмена недоступен (например, страница открыта как файл) — скачиваем файл.
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    a.download = "result.json";
+    a.click();
+    button.textContent = "Файл сохранён";
   }
+  setTimeout(() => button.textContent = "Скопировать result.json", 1800);
+}
+for (const b of [$("export"), $("export2")]) b.addEventListener("click", () => exportResult(b));
+$("live-text").textContent = DATA.live ? "Плагин «Сигнал.kg» присылает жалобы" : "Статичная карта · жалобы видны через сервер";
+if (!DATA.live) $("live-dot").classList.add("off");
+
+/* --- левая панель карты --- */
+$("m-sub").textContent = `${S.clean_rows} замеров после очистки из ${S.total_rows} · сетка 200 × 200 м`;
+$("m-tiles").innerHTML = [[S.colors.red, "красных · слабый сигнал", "t-red"], [S.colors.yellow, "жёлтых · средний", "t-yel"],
+  [S.colors.green, "зелёных · хороший", "t-grn"], [S.dropped_rows, "строк отброшено", "t-gry"]]
+  .map(([n, l, c]) => `<div class="tile ${c}"><b>${n}</b><span>${l}</span></div>`).join("");
+const total = S.colors.red + S.colors.yellow + S.colors.green;
+$("m-bar").innerHTML = ["red", "yellow", "green"].map(k => `<i style="width:${S.colors[k] / total * 100}%;background:${HEX[k]}"></i>`).join("");
+$("m-cellnote").textContent = `Замеры есть в ${S.cells_with_data} клетках; ${S.cells_skipped} из них содержат меньше ${S.min_samples} замеров и не учитываются.`;
+$("m-worst").insertAdjacentHTML("beforeend", DATA.worst.map((w, i) =>
+  `<tr data-i="${i}" style="cursor:pointer"><td class="mono">${esc(w.id)}</td><td class="num neg">${fmt(w.median)}</td><td class="num">${w.samples}</td></tr>`).join(""));
+
+/* --- карта --- */
+map = L.map("map", { preferCanvas: true, zoomControl: true });
+const B = DATA.bounds;
+map.fitBounds([[B.lat_min, B.lon_min], [B.lat_max, B.lon_max]], { padding: [30, 30] });
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+const esri = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19, attribution: "Tiles &copy; Esri", errorTileUrl: BLANK });
+const dgis = L.tileLayer("https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1" + (DATA.dgis_key ? "&key=" + encodeURIComponent(DATA.dgis_key) : ""),
+  { maxZoom: 18, subdomains: "0123", attribution: "&copy; 2ГИС", errorTileUrl: BLANK });
+// Запасная подложка — только если 2ГИС не отдал ни одного тайла.
+let dgisLoaded = 0, dgisErrors = 0;
+dgis.on("tileload", () => dgisLoaded++);
+dgis.on("tileerror", () => {
+  if (++dgisErrors >= 4 && dgisLoaded === 0 && map.hasLayer(dgis)) { map.removeLayer(dgis); esri.addTo(map).bringToBack(); }
 });
 dgis.addTo(map);
 L.rectangle([[B.lat_min, B.lon_min], [B.lat_max, B.lon_max]],
-  { color: "#1c2026", weight: 1.5, fill: false, dashArray: "6 5", interactive: false }).addTo(map);
+  { color: "#111827", weight: 1.5, fill: false, dashArray: "6 5", interactive: false }).addTo(map);
 
-const covered = new Set(DATA.covered);
-function gridLayer(cells, markCovered) {
-  const group = L.layerGroup();
-  for (const c of cells) {
-    const isCovered = markCovered && covered.has(c.id);
-    L.polygon(c.corners, {
-      color: isCovered ? "#1c2026" : COLORS[c.color], weight: isCovered ? 1.4 : 0.6,
-      fillColor: COLORS[c.color], fillOpacity: 0.55,
-    }).bindTooltip(
-      `${c.id}: медиана ${fmt(c.median)} дБм, замеров ${c.samples}` +
-      (isCovered ? " — покрывается новой БС" : ""), { sticky: true }
-    ).addTo(group);
-  }
-  return group;
-}
-const grids = {
-  "Сетка: все замеры": gridLayer(DATA.grids.all, true),
-  "Сетка: день": gridLayer(DATA.grids.day, false),
-  "Сетка: ночь": gridLayer(DATA.grids.night, false),
+const state = { grid: "all", mode: "answer", picked: [], revealed: false, msg: "",
+  layers: { heat: false, worst: true, towers: true, zone: true, cands: true, radius: true, complaints: true } };
+const showAnswer = () => state.mode === "answer" || state.revealed;
+const pickedSet = () => new Set(state.picked.flatMap(id => byId[id].covers));
+const tip = text => { const d = document.createElement("div"); d.textContent = text; return d; };
+// Квадрат чуть меньше своей клетки — между квадратами остаётся зазор, как на макете.
+const inset = corners => {
+  const lat = corners.reduce((s, p) => s + p[0], 0) / 4, lon = corners.reduce((s, p) => s + p[1], 0) / 4;
+  return corners.map(([a, b]) => [lat + (a - lat) * .92, lon + (b - lon) * .92]);
 };
-grids["Сетка: все замеры"].addTo(map);
 
-const worstLayer = L.layerGroup();
-DATA.worst.forEach((c, i) => {
-  L.polygon(c.corners, { color: "#111", weight: 3, fill: false, interactive: false }).addTo(worstLayer);
-  L.marker(c.center, { opacity: 0, interactive: false })
-    .bindTooltip(String(i + 1), { permanent: true, direction: "center", className: "cell-label" }).addTo(worstLayer);
+const grids = {}, cellPolys = {};
+for (const key of ["all", "day", "night"]) {
+  grids[key] = L.layerGroup();
+  for (const c of DATA.grids[key]) {
+    const poly = L.polygon(inset(c.corners), { stroke: false, fillColor: HEX[c.color], fillOpacity: .88 })
+      .bindTooltip(tip(`${c.id}: медиана ${fmt(c.median)} дБм, замеров ${c.samples}`), { sticky: true });
+    poly.addTo(grids[key]);
+    if (key === "all") cellPolys[c.id] = { poly, c };
+  }
+}
+const layer = {
+  heat: L.heatLayer(DATA.heat, { radius: 22, blur: 18, maxZoom: 15, minOpacity: .25,
+    gradient: { .2: "#1f9d55", .5: "#e3a92b", .8: "#e8703a", 1: "#d93636" } }),
+  worst: L.layerGroup(), towers: L.layerGroup(), zone: L.layerGroup(), cands: L.layerGroup(),
+  radius: L.layerGroup(), complaints: L.layerGroup(), picks: L.layerGroup(),
+};
+DATA.worst.forEach((w, i) => {
+  L.polygon(w.corners, { color: "#1b0509", weight: 4, fill: false, interactive: false }).addTo(layer.worst);
+  L.marker(w.center, { interactive: false, icon: L.divIcon({ className: "rank", html: String(i + 1), iconSize: null, iconAnchor: [5, 34] }) }).addTo(layer.worst);
 });
-worstLayer.addTo(map);
-
-const towers = L.layerGroup();
-const exclusion = L.layerGroup();
 for (const t of DATA.towers) {
-  L.circleMarker([t.lat, t.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#1c2026", fillOpacity: 1 })
-    .bindTooltip(`Существующая БС ${t.id}`).addTo(towers);
-  L.circle([t.lat, t.lon], { radius: 500, color: "#1c2026", weight: 1, dashArray: "4 4", fillOpacity: 0.05, interactive: false })
-    .addTo(exclusion);
+  L.circle([t.lat, t.lon], { radius: 500, color: "#374151", weight: 1.5, dashArray: "6 5", fillColor: "#6b7280", fillOpacity: .16, interactive: false }).addTo(layer.zone);
+  L.circleMarker([t.lat, t.lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1 })
+    .bindTooltip(tip(`Существующая БС ${t.id}`)).addTo(layer.towers);
 }
-towers.addTo(map);
-
-const candidates = L.layerGroup();
-const radius = L.layerGroup();
+const markers = {};
 for (const c of DATA.candidates) {
-  const fill = c.chosen ? "#2563eb" : c.allowed ? "#fff" : "#b9bec7";
-  const marker = L.circleMarker([c.lat, c.lon], {
-    radius: c.chosen ? 9 : 6, color: c.chosen ? "#fff" : "#2563eb", weight: 2, fillColor: fill, fillOpacity: 1,
-  }).bindTooltip(c.allowed
-    ? `Площадка ${c.id}: ${c.covers} красных кв. в радиусе 1 км` + (c.chosen ? " — выбрана" : "")
-    : `Площадка ${c.id}: недопустима, ближе 500 м к БС`);
-  marker.addTo(candidates);
-  if (c.chosen) {
-    L.marker([c.lat, c.lon], { opacity: 0, interactive: false })
-      .bindTooltip(c.id, { permanent: true, direction: "top", offset: [0, -8], className: "site-label" }).addTo(candidates);
-    L.circle([c.lat, c.lon], { radius: 1000, color: "#2563eb", weight: 2, fillOpacity: 0.06, interactive: false }).addTo(radius);
-  }
+  const m = L.marker([c.lat, c.lon], { keyboard: true, title: "Площадка " + c.id });
+  m.on("click", () => pick(c));
+  markers[c.id] = m;
 }
-candidates.addTo(map);
-radius.addTo(map);
 
-const heat = L.heatLayer(DATA.heat, {
-  radius: 22, blur: 18, maxZoom: 15, minOpacity: 0.25,
-  gradient: { 0.2: "#2e9e5b", 0.5: "#e2b21c", 0.8: "#e8703a", 1.0: "#d63b3b" },
-});
-
-L.control.layers(grids, {
-  "Тепловая карта слабого сигнала": heat,
-  "Топ-3 худших квадрата": worstLayer,
-  "Существующие БС": towers,
-  "Запретная зона 500 м": exclusion,
-  "Площадки-кандидаты": candidates,
-  "Радиус 1 км выбранных площадок": radius,
-}, { collapsed: false }).addTo(map);
-
-const legend = L.control({ position: "bottomright" });
-legend.onAdd = () => {
-  const box = L.DomUtil.create("div", "leaflet-control-layers");
-  box.style.padding = "8px 10px";
-  for (const key of ["green", "yellow", "red"]) {
-    const line = el("div");
-    const dot = el("span", undefined, "dot");
-    dot.style.background = COLORS[key];
-    line.append(dot, COLOR_NAMES[key]);
-    box.append(line);
+function candTip(c) {
+  if (!c.allowed) return c.reason
+    ? `Площадка ${c.id}: недопустима — ${c.reason.distance_m} м до БС ${c.reason.tower}, нужно не меньше 500 м`
+    : `Площадка ${c.id}: недопустима — ближе 500 м к БС`;
+  return `Площадка ${c.id}: ${c.covers.length} красных кв. в радиусе 1 км`;
+}
+function draw() {
+  for (const key in grids) if (key !== state.grid) map.removeLayer(grids[key]);
+  grids[state.grid].addTo(map);
+  const picked = pickedSet();
+  for (const { poly, c } of Object.values(cellPolys)) {
+    const deep = showAnswer() && c.color === "red" && covered.has(c.id);
+    poly.setStyle(picked.has(c.id)
+      ? { stroke: true, color: HEX.orange, weight: 3, fillColor: deep ? HEX.deep : HEX[c.color], fillOpacity: .92 }
+      : { stroke: false, fillColor: deep ? HEX.deep : HEX[c.color], fillOpacity: .88 });
   }
-  const line = el("div");
-  const dot = el("span", undefined, "dot");
-  dot.style.cssText = "background:#d63b3b;outline:1.5px solid #1c2026";
-  line.append(dot, "Красный, покрыт новой БС");
-  box.append(line);
-  return box;
-};
-legend.addTo(map);
+  layer.radius.clearLayers(); layer.picks.clearLayers(); layer.cands.clearLayers();
+  for (const c of DATA.candidates) {
+    const chosen = showAnswer() && c.chosen, mine = state.picked.includes(c.id);
+    const cls = "cand" + (!c.allowed ? " no" : mine ? " mine big" : chosen ? " chosen big" : "");
+    const size = cls.includes("big") ? 30 : 22;
+    markers[c.id].setIcon(L.divIcon({ className: cls, html: "<i></i>", iconSize: [size, size] }));
+    markers[c.id].unbindTooltip().bindTooltip(tip(candTip(c)));
+    if (state.layers.cands || chosen || mine) markers[c.id].addTo(layer.cands);
+    if (chosen || mine) L.marker([c.lat, c.lon], { interactive: false,
+      icon: L.divIcon({ className: "tag" + (mine ? " mine" : ""), html: `<span>${esc(c.id)}</span>`, iconSize: [0, 0] }) }).addTo(layer.picks);
+    if (chosen) L.circle([c.lat, c.lon], { radius: 1000, color: HEX.indigo, weight: 2, fillColor: HEX.indigo, fillOpacity: .05, interactive: false }).addTo(layer.radius);
+    if (mine) L.circle([c.lat, c.lon], { radius: 1000, color: HEX.orange, weight: 2, dashArray: "8 6", fillColor: HEX.orange, fillOpacity: .05, interactive: false }).addTo(layer.picks);
+  }
+  for (const key of ["heat", "worst", "towers", "zone", "radius", "complaints"]) {
+    if (state.layers[key]) layer[key].addTo(map); else map.removeLayer(layer[key]);
+  }
+  layer.cands.addTo(map); layer.picks.addTo(map);
+  sites();
+}
+
+function pick(c) {
+  if (!c.allowed) { state.msg = candTip(c) + "."; return draw(); }
+  state.msg = "";
+  const i = state.picked.indexOf(c.id);
+  if (i >= 0) state.picked.splice(i, 1);
+  else { if (state.picked.length === 2) state.picked.shift(); state.picked.push(c.id); }
+  draw();
+}
+const siteCard = (id, n, mine) => `<button class="site${mine ? " pick" : ""}" data-s="${esc(id)}"><span class="chip">${esc(id)}</span><span><b>Площадка ${esc(id)}</b><small>красных клеток в радиусе 1 км</small></span><span class="big">${n}</span></button>`;
+function sites() {
+  const picked = pickedSet();
+  let h = "";
+  if (state.mode === "answer") {
+    h += best.map(c => siteCard(c.id, c.covers.length, false)).join("");
+    h += `<div class="row" style="padding:6px 4px"><span>Вместе, без двойного учёта</span><b>${S.covered_weak_cells} из ${S.colors.red}</b></div>
+      <div class="bar"><i style="width:${S.covered_weak_cells / S.colors.red * 100}%;background:var(--deep)"></i><i style="flex:1;background:var(--pinkbg)"></i></div>`;
+    if (state.picked.length) h += `<p class="note">Что если: ${state.picked.map(esc).join(" + ")} закрывают ${picked.size} кв.</p>`;
+    h += `<p class="note">Допустимых площадок ${S.allowed_candidates} из ${DATA.candidates.length}: остальные ближе 500 м к существующей БС. Нажмите площадку на карте, чтобы проверить свой вариант.</p>`;
+  } else {
+    h += state.picked.map(id => siteCard(id, byId[id].covers.length, true)).join("");
+    if (state.picked.length < 2) h += `<p class="note">Выберите на карте ${state.picked.length ? "ещё одну площадку" : "две площадки"}, чтобы закрыть как можно больше красных квадратов.</p>`;
+    else h += `<div class="row" style="padding:6px 4px"><span>Ваши очки</span><b style="font-size:22px">${picked.size}</b></div>`;
+    if (state.revealed) {
+      const d = S.covered_weak_cells - picked.size, pct = Math.round(picked.size / S.covered_weak_cells * 100);
+      h += `<p class="note">Алгоритм: ${S.brute.sites.map(esc).join(" + ")} — ${S.covered_weak_cells}. ${d ? `Вы: ${pct}% от лучшего, на ${d} кв. меньше.` : "Вы нашли оптимальную пару!"}</p>`;
+    }
+    h += `<div class="row" style="justify-content:flex-start;margin-top:8px"><button class="btn primary" id="reveal" ${state.picked.length < 2 || state.revealed ? "disabled" : ""}>Ответ алгоритма</button><button class="btn" id="reset">Заново</button></div>`;
+  }
+  if (state.msg) h += `<p class="alert">${esc(state.msg)}</p>`;
+  $("m-sites").innerHTML = h;
+  $("m-sites").querySelectorAll(".site").forEach(b => b.addEventListener("click", () => {
+    const c = byId[b.dataset.s];
+    map.flyTo([c.lat, c.lon], Math.max(map.getZoom(), 15), { duration: .6 });
+  }));
+  $("reveal")?.addEventListener("click", () => { state.revealed = true; draw(); });
+  $("reset")?.addEventListener("click", () => { state.picked = []; state.revealed = false; state.msg = ""; draw(); });
+}
+const LAYERS = [["heat", "Тепловая карта слабого сигнала", "#f87171"], ["worst", "Топ-3 худших квадрата", "#3b0d14"],
+  ["towers", "Существующие БС", "#2563eb"], ["zone", "Запретная зона 500 м", "#6b7280"],
+  ["cands", "Площадки-кандидаты", "#4338ca"], ["radius", "Радиус 1 км выбранных площадок", "#a5b4fc"],
+  ["complaints", "Жалобы жителей", "#ea580c"]];
+$("m-layers").innerHTML = LAYERS.map(([k, l, c]) =>
+  `<label><input type="checkbox" id="ly-${k}" ${state.layers[k] ? "checked" : ""}><i class="dot" style="background:${c};margin:0"></i>${l}</label>`).join("");
+LAYERS.forEach(([k]) => $("ly-" + k).addEventListener("change", e => { state.layers[k] = e.target.checked; draw(); }));
+function segment(id, attr, apply) {
+  $(id).addEventListener("click", e => {
+    const value = e.target.dataset[attr]; if (!value) return;
+    $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset[attr] === value));
+    apply(value);
+  });
+}
+segment("m-mode", "m", m => { state.mode = m; state.picked = []; state.revealed = false; state.msg = ""; draw(); });
+segment("m-grid", "g", g => { state.grid = g; draw(); });
+$("m-worst").addEventListener("click", e => {
+  const r = e.target.closest("tr[data-i]");
+  if (r) map.flyToBounds(DATA.worst[+r.dataset.i].corners, { maxZoom: 17, duration: .8 });
+});
+draw();
+
+/* --- жалобы --- */
+const complaints = [];
+let rejected = 0, filter = "all";
+function status(c) {
+  const m = medianOf[c.cell_id];
+  if (m === undefined) return `<span class="pill p-gry">Нет замеров</span>`;
+  const k = color(m);
+  if (k === "red") return covered.has(c.cell_id) ? `<span class="pill p-green">Закроет новая БС</span>` : `<span class="pill p-red">Слабая зона</span>`;
+  return k === "yellow" ? `<span class="pill p-yel">Средний сигнал</span>` : `<span class="pill p-green">Хороший сигнал</span>`;
+}
+const isRed = c => medianOf[c.cell_id] !== undefined && color(medianOf[c.cell_id]) === "red";
+function renderComplaints() {
+  const red = complaints.filter(isRed), cover = red.filter(c => covered.has(c.cell_id));
+  $("m-ccount").textContent = complaints.length;
+  $("c-stats").innerHTML = [["Получено", complaints.length, "с момента запуска", ""],
+    ["В слабых зонах", red.length, "медиана < −105 дБм", "color:var(--red)"],
+    ["Закроет новая БС", cover.length, `из ${red.length} в слабых зонах`, "color:var(--green)"],
+    ["Отклонено", rejected, "лимит 5 в минуту с IP", ""]]
+    .map(([l, n, s, st]) => `<div class="card pad stat"><div class="label" style="margin:0 0 4px">${l}</div><b style="${st}">${n}</b><small>${s}</small></div>`).join("");
+  const list = (filter === "red" ? red : filter === "cover" ? cover : complaints).slice().reverse().slice(0, 50);
+  $("c-table").innerHTML = list.length ? `<tr><th>Время</th><th>Объявление</th><th>Квадрат</th><th class="num">Медиана, дБм</th><th>Статус</th></tr>` +
+    list.map(c => {
+      const m = medianOf[c.cell_id];
+      return `<tr><td class="mono">${esc(new Date(c.ts).toLocaleTimeString("ru-RU"))}</td>
+        <td>${c.site ? `<span class="pill p-blue">${esc(c.site)}</span>` : `<span class="pill p-gry">${({ panel: "панель", app: "приложение" })[c.source] || "плагин"}</span>`}</td>
+        <td class="mono">${esc(c.cell_id || "—")}</td>
+        <td class="num">${m === undefined ? "—" : `<i class="dot" style="background:${HEX[color(m)]}"></i>${fmt(m)}`}</td><td>${status(c)}</td></tr>`;
+    }).join("") : "";
+  $("c-empty").textContent = list.length ? "" : DATA.live
+    ? "Жалоб пока нет. Нажмите «Здесь нет связи» в объявлении с установленным плагином."
+    : "Жалобы видны, когда панель открыта через сервер: python -m server.";
+  $("c-empty").style.display = list.length ? "none" : "block";
+  const counts = {};
+  red.forEach(c => counts[c.cell_id] = (counts[c.cell_id] || 0) + 1);
+  const hot = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  $("c-hot").innerHTML = hot
+    ? `<h2>Чаще всего жалуются в ${esc(hot[0])}</h2><p>Жалоб: ${hot[1]}, медиана ${fmt(medianOf[hot[0]])} дБм. ${covered.has(hot[0])
+        ? `Пара ${S.brute.sites.map(esc).join(" + ")} его закрывает.` : "Выбранная пара его не закрывает — кандидат на следующую БС."}</p>
+       <button class="btn primary" style="width:100%" id="c-goto">Открыть на карте</button>`
+    : `<h2>Слабых зон в жалобах пока нет</h2><p>Здесь появится квадрат, на который жалуются чаще всего, и закроет ли его новая БС.</p>`;
+  $("c-goto")?.addEventListener("click", () => {
+    const cell = DATA.grids.all.find(c => c.id === hot[0]);
+    location.hash = "#map";
+    setTimeout(() => map.flyToBounds(cell.corners, { maxZoom: 17, duration: .8 }), 50);
+  });
+}
+segment("c-filter", "f", f => { filter = f; renderComplaints(); });
+function addComplaint(c, fresh) {
+  complaints.push(c);
+  L.marker([c.lat, c.lon], { icon: L.divIcon({ className: "cmp" + (fresh ? " new" : ""), iconSize: [16, 16] }) })
+    .bindTooltip(tip(`Жалоба №${c.id}: «Здесь нет связи», ${new Date(c.ts).toLocaleTimeString("ru-RU")}` + (c.cell_id ? `, квадрат ${c.cell_id}` : "")))
+    .addTo(layer.complaints);
+}
+renderComplaints();
+if (DATA.live) {
+  let lastId = 0, first = true;
+  const poll = async () => {
+    try {
+      const res = await fetch("api/complaints?after=" + lastId, { cache: "no-store" });
+      if (res.ok) {
+        const body = await res.json();
+        for (const c of body.complaints) { addComplaint(c, !first); lastId = Math.max(lastId, c.id); }
+        if (body.complaints.length && !first) map.panTo([body.complaints.at(-1).lat, body.complaints.at(-1).lon]);
+        rejected = body.rejected || 0;
+        first = false;
+        renderComplaints();
+      }
+    } catch (e) { /* сервер временно недоступен — повторим */ }
+    setTimeout(poll, 3000);
+  };
+  poll();
+}
+
+/* --- плагин --- */
+const dbm = v => fmt(Math.round(v));
+function describe(s) {
+  const parts = [`Связь в этом доме: ${s.quality} (${dbm(s.median)})`];
+  if (s.day_median != null && s.night_median != null) {
+    if (s.night_median <= s.day_median - 3) parts.push(`ночью хуже (${dbm(s.night_median)})`);
+    else if (s.night_median >= s.day_median + 3) parts.push(`ночью лучше (${dbm(s.night_median)})`);
+    else parts.push("днём и ночью одинаково");
+  }
+  if (s.color !== "red" && s.nearest_weak_m != null && s.nearest_weak_m <= 300) parts.push(`⚠️ в ${Math.max(50, Math.round(s.nearest_weak_m / 50) * 50)} м слабая зона`);
+  return parts.join(" · ");
+}
+const badge = (c, t, meta, btn) => `<div class="badge" style="--c:${c}"><div class="t"><b>📶 Сигнал.kg</b> ${esc(t)}${meta ? `<small>${esc(meta)}</small>` : ""}</div>${btn ? `<button>Здесь нет связи</button>` : ""}</div>`;
+const ex = DATA.plugin_example;
+$("p-main").innerHTML = ex && ex.status === "ok"
+  ? badge(HEX[ex.color], describe(ex), `Медиана замеров в квадрате ${ex.cell_id} · ${ex.samples} замеров`, true)
+  : badge("#8b919c", "Для этого дома пока нет замеров", "", false);
+$("p-main").querySelector("button")?.addEventListener("click", e => { e.target.textContent = "Спасибо, жалоба передана оператору"; e.target.disabled = true; });
+$("p-states").innerHTML = [
+  badge(HEX.green, "хорошая (−84) · ночью хуже (−97) · ⚠️ в 300 м слабая зона", "", false),
+  badge(HEX.yellow, "средняя (−98)", "", false),
+  badge(HEX.red, "слабая (−117) · ночью лучше (−112)", "", false),
+  badge("#8b919c", "Дом вне района, где есть замеры связи", "", false)].join("");
+
+/* --- приложение и установка панели --- */
+if (DATA.live) {
+  const frame = document.createElement("iframe");
+  frame.src = "app/?demo=1";  // в превью — демо-точка, геолокация во фрейме недоступна
+  frame.title = "Приложение Сигнал.kg";
+  frame.loading = "lazy";
+  $("a-phone").append(frame);
+  fetch("api/info").then(r => r.json()).then(info => {
+    $("a-url").textContent = info.lan_urls[0] || location.origin + info.app_path;
+  }).catch(() => { $("a-url").textContent = location.origin + "/app/"; });
+  // Манифест и service worker нужны, чтобы панель ставилась как программа.
+  const manifest = document.createElement("link");
+  manifest.rel = "manifest";
+  manifest.href = "manifest.webmanifest";
+  document.head.append(manifest);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {});
+  let installEvent = null;
+  addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvent = e; $("install-panel").hidden = false; });
+  $("install-panel").addEventListener("click", async () => {
+    if (!installEvent) return;
+    installEvent.prompt();
+    await installEvent.userChoice;
+    installEvent = null;
+    $("install-panel").hidden = true;
+  });
+} else {
+  $("a-phone").innerHTML = `<div class="empty">Приложение открывается с сервера:<br><span class="mono">python -m server</span><br>→ http://127.0.0.1:8000/app/</div>`;
+  $("a-url").textContent = "http://<адрес компьютера>:8000/app/";
+}
+
+/* --- данные --- */
+$("d-sources").innerHTML = [
+  ["Замеры · CSV", `${S.total_rows} строк`, "p-green", "lat, lon, rsrp_dbm, timestamp. Лимит файла 50 МБ."],
+  ["Существующие БС", `${DATA.towers.length} загружено`, "p-green", "Запретная зона 500 м вокруг каждой."],
+  ["Площадки-кандидаты", `${S.allowed_candidates} из ${DATA.candidates.length} допустимы`, "p-yel", "Остальные ближе 500 м к БС."],
+  ["Подложка · 2ГИС", "активна", "p-green", "Тайлы для Leaflet; запасная — Esri."]]
+  .map(([h, p, c, t]) => `<div class="card pad"><div class="row"><b>${h}</b><span class="pill ${c}">${p}</span></div><p class="note">${t}</p></div>`).join("");
+$("d-droptitle").textContent = `Очистка: отброшено ${S.dropped_rows} строк`;
+const NAMES = { duplicate: "Дубли", out_of_bounds: "Координаты вне района", rsrp_out_of_range: "RSRP вне −140…−44", empty_row: "Пустые строки",
+  not_a_number: "Нечисловые значения", malformed_row: "Не хватает полей", bad_timestamp: "Неверное время" };
+const reasons = Object.entries(S.dropped).sort((a, b) => b[1] - a[1]), mx = reasons.length ? reasons[0][1] : 1;
+$("d-clean").innerHTML = `<tr><th>Причина</th><th style="width:40%"></th><th class="num">Строк</th></tr>` +
+  reasons.map(([k, n]) => `<tr><td>${esc(NAMES[k] || k)}</td><td><div class="hbar" style="width:${n / mx * 100}%"></div></td><td class="num">${n}</td></tr>`).join("");
+const ms = n => (n < 1 ? n.toFixed(3) : n.toFixed(1)) + " мс";
+$("d-algo").innerHTML = `<tr><th>Алгоритм</th><th>Пара</th><th class="num">Покрыто</th><th class="num">Время</th></tr>
+  <tr><td><b>Полный перебор</b></td><td>${S.brute.sites.map(esc).join(" + ")}</td><td class="num"><b>${S.brute.covered}</b></td><td class="num">${ms(S.brute.ms)}</td></tr>
+  <tr><td>Жадный</td><td>${S.greedy.sites.map(esc).join(" + ")}</td><td class="num">${S.greedy.covered}</td><td class="num">${ms(S.greedy.ms)}</td></tr>`;
+$("d-algonote").textContent = `Перебор проверил ${S.brute.pairs_checked} пар допустимых площадок из ${S.brute.pairs_total}. ` + (S.algorithms_agree
+  ? "Жадный алгоритм выбрал ту же пару."
+  : `Жадный теряет ${S.brute.covered - S.greedy.covered} кв.: берёт лучшую одиночную площадку и уже не пересматривает её.`);
+const H = S.night_hours;
+$("d-dn").innerHTML = `<tr><th></th><th class="num">Замеров</th><th class="num">Клеток</th><th class="num">Красных</th><th class="num">Медиана</th></tr>` +
+  [[`День · ${String(H[1]).padStart(2, "0")}–${H[0]}`, S.periods.day], [`Ночь · ${H[0]}–${String(H[1]).padStart(2, "0")}`, S.periods.night]].map(([l, p]) =>
+    `<tr><td>${l}</td><td class="num">${p.measurements}</td><td class="num">${p.cells}</td><td class="num">${p.red}</td><td class="num">${p.median === null ? "—" : fmt(p.median)}</td></tr>`).join("");
+$("d-json").textContent = JSON.stringify(result, null, 2);
+}
 </script>
 </body>
 </html>

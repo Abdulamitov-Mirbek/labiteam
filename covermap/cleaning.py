@@ -22,6 +22,7 @@ from .geo import Bounds
 
 REQUIRED = ("lat", "lon", "rsrp_dbm", "timestamp")
 RSRP_MIN, RSRP_MAX = -140.0, -44.0
+MAX_FILE_BYTES = 50 * 1024 * 1024  # защита от случайно поданного огромного файла
 NUMBER_RE = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
 
 # Причины отбрасывания — ключи статистики.
@@ -84,6 +85,9 @@ def parse_time(text: str, zone: tzinfo) -> datetime | None:
 
 def read_rows(path: Path) -> tuple[list[str], list[list[str]]]:
     """Заголовок и строки данных; пустые физические строки сохраняются как []."""
+    size = Path(path).stat().st_size
+    if size > MAX_FILE_BYTES:
+        raise ValueError(f"{path}: файл {size // 2**20} МБ больше лимита {MAX_FILE_BYTES // 2**20} МБ")
     lines = Path(path).read_text(encoding="utf-8-sig").splitlines()
     if not lines:
         raise ValueError(f"{path}: файл пуст, нет строки заголовка")

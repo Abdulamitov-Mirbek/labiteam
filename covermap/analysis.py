@@ -92,6 +92,15 @@ def allowed_candidates(candidates: list[Site], towers: list[Site], bounds: Bound
     ]
 
 
+def nearest_site(point: Site, sites: list[Site], bounds: Bounds) -> tuple[Site, float] | None:
+    """Ближайший объект и расстояние до него, метры (None, если список пуст)."""
+    return min(
+        ((site, haversine(point.lat, point.lon, site.lat, site.lon, bounds.radius)) for site in sites),
+        key=lambda pair: pair[1],
+        default=None,
+    )
+
+
 def coverage(candidates: list[Site], red: list[Cell], bounds: Bounds) -> dict[str, frozenset]:
     """Для каждой площадки — множество красных клеток с центром не дальше 1 км."""
     centers = {c.id: bounds.cell_center(c.cell) for c in red}

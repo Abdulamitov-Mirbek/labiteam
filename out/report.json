@@ -27,15 +27,19 @@
       "C14"
     ],
     "covered": 111,
-    "pairs_checked": 120
+    "pairs_checked": 120,
+    "pairs_total": 190,
+    "ms": 0.387
   },
   "greedy": {
     "sites": [
       "C16",
       "C17"
     ],
-    "covered": 108
+    "covered": 108,
+    "ms": 0.049
   },
+  "algorithms_agree": false,
   "night_hours": [
     22,
     6
