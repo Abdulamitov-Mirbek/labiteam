@@ -6,6 +6,8 @@ GET  /api/listing?url=     связь в доме из объявления hous
 GET  /api/cells            сетка 200×200 м с медианами и цветами
 GET  /api/result           result.json
 POST /api/complaints       жалоба «Здесь нет связи» {lat, lon, source, site}
+POST /api/reports          отметка жителя «как ловит связь» {lat, lon, level, network, source, site}
+GET  /api/reports          отметки с id больше after и число отклонённых лимитом
 GET  /api/complaints       жалобы с id больше after и число отклонённых лимитом
 
 Настройки (переменные окружения):
@@ -52,6 +54,9 @@ SITES = {"house.kg", "lalafo.kg"}
 MAX_BODY_BYTES = 1024
 COMPLAINTS_PER_MINUTE = 5      # с одного IP
 COMPLAINTS_KEEP = 5000         # сколько последних жалоб держать в памяти
+# Отметка жителя «как ловит связь в этом доме»: уровень → цвет на карте.
+LEVELS = {"good": "green", "ok": "yellow", "bad": "red", "none": "red"}
+NETWORKS = {"2G", "3G", "4G", "5G"}
 LISTINGS_PER_MINUTE = 20       # проверок объявлений с одного IP
 
 
@@ -109,7 +114,7 @@ class Complaints:
         hits.append(now)
         return 0
 
-    def add(self, lat: float, lon: float, cell_id: str | None, source: str, site: str | None) -> dict:
+    def add(self, lat: float, lon: float, cell_id: str | None, source: str, site: str | None, **extra) -> dict:
         with self.lock:
             record = {
                 "id": self.last_id + 1,
@@ -119,6 +124,7 @@ class Complaints:
                 "cell_id": cell_id,
                 "source": source,
                 "site": site,
+                **extra,
             }
             self.items.append(record)
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -130,10 +136,15 @@ class Complaints:
         return [item for item in self.items if item["id"] > last_id]
 
 
+class Reports(Complaints):
+    """Отметки жителей «как ловит связь»: то же хранилище и тот же лимит, свой файл."""
+
+
 def create_app(
     data_dir: Path | None = None,
     dgis_key: str | None = None,
     complaints_file: Path | None = None,
+    reports_file: Path | None = None,
     origins: list[str] | None = None,
     listing_fetcher=None,
 ) -> FastAPI:
@@ -142,6 +153,7 @@ def create_app(
     complaints_file = Path(
         complaints_file or os.environ.get("COMPLAINTS_FILE") or ROOT / "var" / "complaints.jsonl"
     )
+    reports_file = Path(reports_file or os.environ.get("REPORTS_FILE") or complaints_file.with_name("reports.jsonl"))
     if origins is None:
         origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()]
 
@@ -162,6 +174,7 @@ def create_app(
     app = FastAPI(title="Сигнал.kg", docs_url="/api/docs", redoc_url=None)
     app.state.report = report
     app.state.complaints = Complaints(complaints_file)
+    app.state.reports = Reports(reports_file)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -271,8 +284,8 @@ def create_app(
     async def result():
         return report.result()
 
-    @app.post("/api/complaints", status_code=201)
-    async def add_complaint(request: Request):
+    async def read_object(request: Request) -> dict | JSONResponse:
+        """Тело запроса — объект JSON не больше MAX_BODY_BYTES; иначе готовый ответ с ошибкой."""
         body = await request.body()
         if len(body) > MAX_BODY_BYTES:
             return error(413, "too_large", f"тело запроса больше {MAX_BODY_BYTES} байт")
@@ -282,6 +295,13 @@ def create_app(
             return error(400, "bad_request", "ожидается JSON")
         if not isinstance(fields, dict):
             return error(400, "bad_request", "ожидается объект JSON")
+        return fields
+
+    @app.post("/api/complaints", status_code=201)
+    async def add_complaint(request: Request):
+        fields = await read_object(request)
+        if isinstance(fields, JSONResponse):
+            return fields
         lat, lon = parse_coordinate(fields.get("lat")), parse_coordinate(fields.get("lon"))
         source = fields.get("source", "plugin")
         site = fields.get("site")
@@ -300,6 +320,34 @@ def create_app(
     @app.get("/api/complaints")
     async def complaints(after: int = 0):
         return {"complaints": app.state.complaints.after(after), "rejected": app.state.complaints.rejected}
+
+    @app.post("/api/reports", status_code=201)
+    async def add_report(request: Request):
+        """Отметка жителя: как на самом деле ловит связь в этом доме."""
+        fields = await read_object(request)
+        if isinstance(fields, JSONResponse):
+            return fields
+        lat, lon = parse_coordinate(fields.get("lat")), parse_coordinate(fields.get("lon"))
+        level, network = fields.get("level"), fields.get("network")
+        source, site = fields.get("source", "plugin"), fields.get("site")
+        if (lat is None or lon is None or level not in LEVELS or source not in SOURCES
+                or (network is not None and network not in NETWORKS)
+                or (site is not None and site not in SITES)):
+            return error(400, "bad_request",
+                         "нужны числа lat, lon; level: good, ok, bad или none; network: 2G–5G или null")
+        if not report.bounds.contains(lat, lon):
+            return error(422, "out_of_area", "точка вне района замеров")
+        wait = app.state.reports.allow(client_ip(request))
+        if wait:
+            return error(429, "rate_limited", "слишком много отметок, попробуйте позже",
+                         **{"Retry-After": str(wait)})
+        found = index.lookup(lat, lon)
+        cell_id = found.get("cell_id") if found else None
+        return app.state.reports.add(lat, lon, cell_id, source, site, level=level, network=network)
+
+    @app.get("/api/reports")
+    async def reports(after: int = 0):
+        return {"reports": app.state.reports.after(after), "rejected": app.state.reports.rejected}
 
     @app.get("/health")
     async def health():

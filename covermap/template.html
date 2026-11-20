@@ -103,6 +103,9 @@ td{padding:10px 12px;border-top:1px solid var(--line)}
 .rank{font:800 16px Inter,system-ui,sans-serif;color:#1b0509;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;width:auto!important;height:auto!important}
 .cmp{width:16px;height:16px;border-radius:50%;background:var(--orange);border:2.5px solid #fff;box-shadow:0 0 0 1px var(--orange)}
 .cmp.new{animation:pulse 1.2s ease-out 4}
+.rep{width:14px;height:14px;border-radius:50%;background:#fff;border:4px solid var(--c);box-shadow:0 0 0 1.5px #fff,0 1px 4px rgba(0,0,0,.35)}
+.rep.new{animation:pulse 1.2s ease-out 4}
+.p-indigo{background:#ecebfc;color:var(--indigo)}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(234,88,12,.7)}100%{box-shadow:0 0 0 18px rgba(234,88,12,0)}}
 /* жалобы, плагин, данные */
 .two{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
@@ -132,7 +135,7 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
 <body>
 <nav>
   <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a8 8 0 0 1 12 0M4.5 9.5a4.5 4.5 0 0 1 7 0" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="8" cy="12" r="1.6" fill="#fff"/></svg></span>LABI · Сигнал.kg</div>
-  <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#data" data-v="data">Данные</a>
+  <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#signals" data-v="signals">Сигналы</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#data" data-v="data">Данные</a>
   <div class="status"><i class="live" id="live-dot"></i><span id="live-text"></span><button class="btn" id="install-panel" hidden style="background:#24304a;border-color:#24304a;color:#fff">Установить панель</button><button class="btn dark" id="export">Скопировать result.json</button></div>
 </nav>
 <main>
@@ -165,6 +168,7 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
         <div><i class="sq" style="background:var(--red)"></i>Слабый (&lt; −105)</div>
         <div><i class="sq" style="background:var(--deep)"></i>Слабый, закроет новая БС</div>
         <div><i class="sq" style="background:var(--orange);border-radius:50%"></i>Жалоба жителя</div>
+        <div><i class="sq" style="background:#fff;border:3px solid var(--red);border-radius:50%;width:12px;height:12px"></i>Сигнал жителя (цвет — оценка)</div>
       </div>
       <a class="float cta btn primary" href="#complaints" style="border:0">Жалобы жителей: <span id="m-ccount" style="margin-left:4px">0</span>&nbsp;→</a>
     </div>
@@ -188,6 +192,27 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
         <li>Не больше 5 жалоб в минуту с одного IP.</li>
         <li>Хранятся только время, точка, квадрат и сайт объявления — без персональных данных.</li></ol></div>
       <div class="darkcard" style="margin-top:12px" id="c-hot"></div>
+    </div>
+  </div>
+</div></section>
+
+<section class="view" id="v-signals"><div class="page">
+  <div class="row"><div><h1>Сигналы от жителей</h1><div class="sub">Житель нажал «Отправить сигнал» в объявлении и отметил, как там на самом деле ловит связь.</div></div>
+  <a class="btn primary" href="#map">Показать на карте</a></div>
+  <div class="stats" id="r-stats"></div>
+  <div class="two">
+    <div class="card" style="overflow:hidden">
+      <div class="row pad"><h2>Последние сигналы</h2><div class="seg" id="r-filter" style="width:360px;max-width:100%"><button data-f="all" class="on">Все</button><button data-f="worse">Хуже карты</button><button data-f="better">Лучше карты</button></div></div>
+      <div class="scroll"><table id="r-table"></table></div>
+      <div class="empty" id="r-empty"></div>
+    </div>
+    <div>
+      <div class="card pad"><h2>Как читать</h2><ol>
+        <li>«Карта» — медиана замеров оператора в квадрате 200 × 200 м.</li>
+        <li>«Житель» — его оценка: отлично, нормально, плохо или нет связи, и сеть, если он её указал.</li>
+        <li>«Хуже, чем на карте» — повод перепроверить квадрат: замеры могли устареть.</li>
+        <li>Хранятся только время, точка, квадрат, оценка и сайт объявления — без персональных данных.</li></ol></div>
+      <div class="darkcard" style="margin-top:12px" id="r-hot"></div>
     </div>
   </div>
 </div></section>
@@ -248,7 +273,7 @@ const result = { worst_cells: DATA.worst.map(w => ({ cell_id: w.id, rsrp_median:
   best_candidates: S.brute.sites, dropped_rows: S.dropped_rows, covered_weak_cells: S.covered_weak_cells };
 
 /* --- вкладки --- */
-const VIEWS = ["map", "complaints", "plugin", "data"];
+const VIEWS = ["map", "complaints", "signals", "plugin", "data"];
 let map;
 function route() {
   const v = (location.hash || "#map").slice(1);
@@ -310,7 +335,7 @@ L.rectangle([[B.lat_min, B.lon_min], [B.lat_max, B.lon_max]],
   { color: "#111827", weight: 1.5, fill: false, dashArray: "6 5", interactive: false }).addTo(map);
 
 const state = { grid: "all", mode: "answer", picked: [], revealed: false, msg: "",
-  layers: { heat: false, worst: true, towers: true, zone: true, cands: true, radius: true, complaints: true } };
+  layers: { heat: false, worst: true, towers: true, zone: true, cands: true, radius: true, complaints: true, reports: true } };
 const showAnswer = () => state.mode === "answer" || state.revealed;
 const pickedSet = () => new Set(state.picked.flatMap(id => byId[id].covers));
 const tip = text => { const d = document.createElement("div"); d.textContent = text; return d; };
@@ -336,7 +361,7 @@ const layer = {
   heat: L.heatLayer(DATA.heat, { radius: 22, blur: 18, maxZoom: 15, minOpacity: .25,
     gradient: { .2: "#1f9d55", .5: "#e3a92b", .8: "#e8703a", 1: "#d93636" } }),
   worst: L.layerGroup(), towers: L.layerGroup(), zone: L.layerGroup(), cands: L.layerGroup(),
-  radius: L.layerGroup(), complaints: L.layerGroup(), picks: L.layerGroup(),
+  radius: L.layerGroup(), complaints: L.layerGroup(), reports: L.layerGroup(), picks: L.layerGroup(),
 };
 DATA.worst.forEach((w, i) => {
   L.polygon(w.corners, { color: "#1b0509", weight: 4, fill: false, interactive: false }).addTo(layer.worst);
@@ -383,7 +408,7 @@ function draw() {
     if (chosen) L.circle([c.lat, c.lon], { radius: 1000, color: HEX.indigo, weight: 2, fillColor: HEX.indigo, fillOpacity: .05, interactive: false }).addTo(layer.radius);
     if (mine) L.circle([c.lat, c.lon], { radius: 1000, color: HEX.orange, weight: 2, dashArray: "8 6", fillColor: HEX.orange, fillOpacity: .05, interactive: false }).addTo(layer.picks);
   }
-  for (const key of ["heat", "worst", "towers", "zone", "radius", "complaints"]) {
+  for (const key of ["heat", "worst", "towers", "zone", "radius", "complaints", "reports"]) {
     if (state.layers[key]) layer[key].addTo(map); else map.removeLayer(layer[key]);
   }
   layer.cands.addTo(map); layer.picks.addTo(map);
@@ -430,7 +455,7 @@ function sites() {
 const LAYERS = [["heat", "Тепловая карта слабого сигнала", "#f87171"], ["worst", "Топ-3 худших квадрата", "#3b0d14"],
   ["towers", "Существующие БС", "#2563eb"], ["zone", "Запретная зона 500 м", "#6b7280"],
   ["cands", "Площадки-кандидаты", "#4338ca"], ["radius", "Радиус 1 км выбранных площадок", "#a5b4fc"],
-  ["complaints", "Жалобы жителей", "#ea580c"]];
+  ["complaints", "Жалобы жителей", "#ea580c"], ["reports", "Сигналы жителей", "#d93636"]];
 $("m-layers").innerHTML = LAYERS.map(([k, l, c]) =>
   `<label><input type="checkbox" id="ly-${k}" ${state.layers[k] ? "checked" : ""}><i class="dot" style="background:${c};margin:0"></i>${l}</label>`).join("");
 LAYERS.forEach(([k]) => $("ly-" + k).addEventListener("change", e => { state.layers[k] = e.target.checked; draw(); }));
@@ -522,6 +547,85 @@ if (DATA.live) {
   poll();
 }
 
+/* --- сигналы жителей: оценка связи в доме против карты оператора --- */
+const LEVEL = { good: ["Отлично", HEX.green, 2], ok: ["Нормально", HEX.yellow, 1], bad: ["Плохо", HEX.red, 0], none: ["Нет связи", "#111827", 0] };
+const MAP_RANK = { green: 2, yellow: 1, red: 0 };
+const reports = [];
+let reportsRejected = 0, reportFilter = "all";
+// Сравнение оценки жителя с цветом квадрата: -1 хуже карты, 0 совпадает, 1 лучше, null — нет замеров.
+function versus(r) {
+  const m = medianOf[r.cell_id];
+  if (m === undefined) return null;
+  return Math.sign(LEVEL[r.level][2] - MAP_RANK[color(m)]);
+}
+const VERSUS = { "-1": ["Хуже, чем на карте", "p-red"], "0": ["Совпадает с картой", "p-green"], "1": ["Лучше, чем на карте", "p-indigo"] };
+function renderReports() {
+  const worse = reports.filter(r => versus(r) === -1), better = reports.filter(r => versus(r) === 1);
+  const count = keys => reports.filter(r => keys.includes(r.level)).length;
+  $("r-stats").innerHTML = [["Получено", reports.length, "с момента запуска", ""],
+    ["Отлично / нормально", count(["good", "ok"]), "житель доволен связью", "color:var(--green)"],
+    ["Плохо / нет связи", count(["bad", "none"]), "житель недоволен", "color:var(--red)"],
+    ["Хуже, чем на карте", worse.length, `отклонено лимитом: ${reportsRejected}`, worse.length ? "color:var(--red)" : ""]]
+    .map(([l, n, s, st]) => `<div class="card pad stat"><div class="label" style="margin:0 0 4px">${l}</div><b style="${st}">${n}</b><small>${s}</small></div>`).join("");
+  const list = (reportFilter === "worse" ? worse : reportFilter === "better" ? better : reports).slice().reverse().slice(0, 50);
+  $("r-table").innerHTML = list.length ? `<tr><th>Время</th><th>Объявление</th><th>Квадрат</th><th class="num">Карта, дБм</th><th>Житель</th><th>Сравнение</th></tr>` +
+    list.map(r => {
+      const m = medianOf[r.cell_id], [label, dot] = LEVEL[r.level], v = versus(r);
+      return `<tr><td class="mono">${esc(new Date(r.ts).toLocaleTimeString("ru-RU"))}</td>
+        <td>${r.site ? `<span class="pill p-blue">${esc(r.site)}</span>` : `<span class="pill p-gry">${({ panel: "панель", app: "приложение" })[r.source] || "плагин"}</span>`}</td>
+        <td class="mono">${esc(r.cell_id || "—")}</td>
+        <td class="num">${m === undefined ? "—" : `<i class="dot" style="background:${HEX[color(m)]}"></i>${fmt(m)}`}</td>
+        <td><i class="dot" style="background:${dot}"></i>${esc(label)}${r.network ? ` <span class="pill p-gry">${esc(r.network)}</span>` : ""}</td>
+        <td>${v === null ? `<span class="pill p-gry">Нет замеров</span>` : `<span class="pill ${VERSUS[v][1]}">${VERSUS[v][0]}</span>`}</td></tr>`;
+    }).join("") : "";
+  $("r-empty").textContent = list.length ? "" : DATA.live
+    ? "Сигналов пока нет. В объявлении с плагином нажмите «Отправить сигнал» и выберите, как ловит связь."
+    : "Сигналы видны, когда панель открыта через сервер: python -m server.";
+  $("r-empty").style.display = list.length ? "none" : "block";
+  const counts = {};
+  worse.forEach(r => counts[r.cell_id] = (counts[r.cell_id] || 0) + 1);
+  const hot = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  $("r-hot").innerHTML = hot
+    ? `<h2>Карта расходится с жителями в ${esc(hot[0])}</h2><p>Сигналов «хуже, чем на карте»: ${hot[1]}. По замерам медиана ${fmt(medianOf[hot[0]])} дБм — квадрат стоит перемерить.</p>
+       <button class="btn primary" style="width:100%" id="r-goto">Открыть на карте</button>`
+    : `<h2>Расхождений с картой пока нет</h2><p>Здесь появится квадрат, где жители оценивают связь хуже, чем показывают замеры.</p>`;
+  $("r-goto")?.addEventListener("click", () => {
+    const cell = DATA.grids.all.find(c => c.id === hot[0]);
+    location.hash = "#map";
+    setTimeout(() => map.flyToBounds(cell.corners, { maxZoom: 17, duration: .8 }), 50);
+  });
+}
+segment("r-filter", "f", f => { reportFilter = f; renderReports(); });
+function addReport(r, fresh) {
+  if (!LEVEL[r.level]) return;
+  reports.push(r);
+  const [label, dot] = LEVEL[r.level];
+  const marker = L.marker([r.lat, r.lon], { icon: L.divIcon({ className: "rep" + (fresh ? " new" : ""), iconSize: [14, 14] }) })
+    .bindTooltip(tip(`Сигнал жителя: ${label}${r.network ? " · " + r.network : ""}, ${new Date(r.ts).toLocaleTimeString("ru-RU")}` + (r.cell_id ? `, квадрат ${r.cell_id}` : "")))
+    .addTo(layer.reports);
+  marker.getElement()?.style.setProperty("--c", dot);
+  marker.on("add", () => marker.getElement()?.style.setProperty("--c", dot));
+}
+renderReports();
+if (DATA.live) {
+  let lastReport = 0, firstReport = true;
+  const pollReports = async () => {
+    try {
+      const res = await fetch("api/reports?after=" + lastReport, { cache: "no-store" });
+      if (res.ok) {
+        const body = await res.json();
+        for (const r of body.reports) { addReport(r, !firstReport); lastReport = Math.max(lastReport, r.id); }
+        if (body.reports.length && !firstReport) map.panTo([body.reports.at(-1).lat, body.reports.at(-1).lon]);
+        reportsRejected = body.rejected || 0;
+        firstReport = false;
+        renderReports();
+      }
+    } catch (e) { /* сервер временно недоступен — повторим */ }
+    setTimeout(pollReports, 3000);
+  };
+  pollReports();
+}
+
 /* --- плагин --- */
 const dbm = v => fmt(Math.round(v));
 function describe(s) {
@@ -534,12 +638,13 @@ function describe(s) {
   if (s.color !== "red" && s.nearest_weak_m != null && s.nearest_weak_m <= 300) parts.push(`⚠️ в ${Math.max(50, Math.round(s.nearest_weak_m / 50) * 50)} м слабая зона`);
   return parts.join(" · ");
 }
-const badge = (c, t, meta, btn) => `<div class="badge" style="--c:${c}"><div class="t"><b>📶 Сигнал.kg</b> ${esc(t)}${meta ? `<small>${esc(meta)}</small>` : ""}</div>${btn ? `<button>Здесь нет связи</button>` : ""}</div>`;
+const badge = (c, t, meta, btn) => `<div class="badge" style="--c:${c}"><div class="t"><b>📶 Сигнал.kg</b> ${esc(t)}${meta ? `<small>${esc(meta)}</small>` : ""}</div>${btn ? `<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="send" style="background:var(--blue);border-color:var(--blue);color:#fff">Отправить сигнал</button><button class="nosig">Здесь нет связи</button></span>` : ""}</div>`;
 const ex = DATA.plugin_example;
 $("p-main").innerHTML = ex && ex.status === "ok"
   ? badge(HEX[ex.color], describe(ex), `Медиана замеров в квадрате ${ex.cell_id} · ${ex.samples} замеров`, true)
   : badge("#8b919c", "Для этого дома пока нет замеров", "", false);
-$("p-main").querySelector("button")?.addEventListener("click", e => { e.target.textContent = "Спасибо, жалоба передана оператору"; e.target.disabled = true; });
+$("p-main").querySelector(".nosig")?.addEventListener("click", e => { e.target.textContent = "Спасибо, жалоба передана оператору"; e.target.disabled = true; });
+$("p-main").querySelector(".send")?.addEventListener("click", e => { e.target.textContent = "В плагине: выбрать «Отлично / Нормально / Плохо / Нет связи»"; e.target.disabled = true; });
 $("p-states").innerHTML = [
   badge(HEX.green, "хорошая (−84) · ночью хуже (−97) · ⚠️ в 300 м слабая зона", "", false),
   badge(HEX.yellow, "средняя (−98)", "", false),

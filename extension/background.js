@@ -36,6 +36,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     call("/api/signal?" + query).then(sendResponse);
     return true;
   }
+  if (message.type === "report") {
+    const levels = ["good", "ok", "bad", "none"], networks = ["2G", "3G", "4G", "5G"];
+    if (!levels.includes(message.level) || (message.network !== null && !networks.includes(message.network))) return false;
+    call("/api/reports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: message.lat, lon: message.lon, level: message.level, network: message.network,
+        source: "plugin", site: listingSite(sender) }),
+    }).then(sendResponse);
+    return true;
+  }
   if (message.type === "complaint") {
     call("/api/complaints", {
       method: "POST",

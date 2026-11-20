@@ -185,3 +185,44 @@ def test_panel_has_no_app_tab(client):
     page = client.get("/").text
     assert 'data-v="app"' not in page and 'id="v-app"' not in page
     assert client.get("/api/info").status_code == 404
+
+
+# --- сигналы жителей «как ловит связь» -----------------------------------------
+
+def test_report_roundtrip(client, tmp_path):
+    r = client.post("/api/reports", json={**HOUSE, "level": "bad", "network": "4G", "site": "house.kg"})
+    assert r.status_code == 201
+    record = r.json()
+    assert set(record) == {"id", "ts", "lat", "lon", "cell_id", "source", "site", "level", "network"}
+    assert record["level"] == "bad" and record["network"] == "4G" and record["cell_id"]
+    assert client.get("/api/reports").json()["reports"] == [record]
+    assert client.get("/api/reports", params={"after": record["id"]}).json()["reports"] == []
+    saved = (tmp_path / "reports.jsonl").read_text()
+    assert "127.0.0.1" not in saved and "testclient" not in saved
+    assert client.get("/api/complaints").json()["complaints"] == []  # жалобы и сигналы раздельно
+
+
+def test_report_without_network(client):
+    r = client.post("/api/reports", json={**HOUSE, "level": "good"})
+    assert r.status_code == 201 and r.json()["network"] is None
+
+
+@pytest.mark.parametrize("body", [
+    {"level": "great"}, {"level": None}, {}, {"level": "ok", "network": "6G"},
+    {"level": "ok", "site": "evil.example"}, {"level": "ok", "source": "bot"},
+])
+def test_report_bad_fields_400(client, body):
+    assert client.post("/api/reports", json={**HOUSE, **body}).status_code == 400
+
+
+def test_report_out_of_area_and_limit(client):
+    assert client.post("/api/reports", json={"lat": 42.8, "lon": 74.6, "level": "ok"}).status_code == 422
+    for _ in range(server_app.COMPLAINTS_PER_MINUTE):
+        assert client.post("/api/reports", json={**HOUSE, "level": "ok"}).status_code == 201
+    r = client.post("/api/reports", json={**HOUSE, "level": "ok"})
+    assert r.status_code == 429 and client.get("/api/reports").json()["rejected"] == 1
+
+
+def test_report_too_large(client):
+    body = b'{"lat": 42.86, "lon": 74.58, "level": "ok", "x": "' + b"a" * 2000 + b'"}'
+    assert client.post("/api/reports", content=body).status_code == 413

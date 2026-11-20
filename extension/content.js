@@ -19,7 +19,22 @@
              border-radius:7px; padding:6px 10px; min-height:34px; cursor:pointer; }
     button:focus-visible { outline:3px solid #93b4ff; outline-offset:2px; }
     button:disabled { opacity:.5; cursor:default; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    button.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
+    .report { flex-basis:100%; border-top:1px solid #e5e7eb; padding-top:10px; display:grid; gap:8px; }
+    .report[hidden] { display:none; }
+    .report .q { font-weight:600; }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .chips small { color:#6b7280; font-size:12px; margin-right:2px; }
+    .chip { border-color:#d1d5db; }
+    .chip i { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:0; }
+    .chip[aria-pressed="true"] { border-color:#111827; background:#111827; color:#fff; }
+    .done { color:#1f9d55; font-weight:600; }
   `;
+  // Отметка жителя: уровень → подпись и цвет точки.
+  const LEVELS = [["good", "Отлично", "#1f9d55"], ["ok", "Нормально", "#e3a92b"],
+                  ["bad", "Плохо", "#d93636"], ["none", "Нет связи", "#111827"]];
+  const NETWORKS = ["5G", "4G", "3G", "2G"];
 
   let host = null;
   let currentUrl = "";
@@ -93,6 +108,10 @@
     if (meta) body.append(el("div", meta, "meta"));
     card.append(body);
     if (coords) {
+      const actions = el("div", null, "actions");
+      const reportButton = el("button", "Отправить сигнал", "primary");
+      const panel = reportPanel(coords, () => { reportButton.disabled = true; reportButton.textContent = "Сигнал отправлен"; });
+      reportButton.addEventListener("click", () => { panel.hidden = !panel.hidden; });
       const button = el("button", "Здесь нет связи");
       button.addEventListener("click", async () => {
         button.disabled = true;
@@ -102,9 +121,68 @@
           : "Не удалось отправить";
         if (!reply.ok) setTimeout(() => { button.disabled = false; button.textContent = "Здесь нет связи"; }, 4000);
       });
-      card.append(button);
+      actions.append(reportButton, button);
+      card.append(actions, panel);
     }
     return card;
+  }
+
+  // «Отправить сигнал»: житель отмечает, как на самом деле ловит связь в этом доме.
+  // Отметка уходит на панель оператора и появляется на карте.
+  function reportPanel(coords, onSent) {
+    const panel = el("div", null, "report");
+    panel.hidden = true;
+    const state = { level: null, network: null };
+
+    const levels = el("div", null, "chips");
+    const levelButtons = LEVELS.map(([key, label, color]) => {
+      const b = el("button", null, "chip");
+      const dot = el("i");
+      dot.style.background = color;
+      b.append(dot, document.createTextNode(label));
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => {
+        state.level = key;
+        levelButtons.forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+        submit.disabled = false;
+      });
+      return b;
+    });
+    levels.append(...levelButtons);
+
+    const nets = el("div", null, "chips");
+    nets.append(el("small", "Сеть (если знаете):"));
+    const netButtons = NETWORKS.map(n => {
+      const b = el("button", n, "chip");
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => {
+        state.network = state.network === n ? null : n;
+        netButtons.forEach(x => x.setAttribute("aria-pressed", String(x.textContent === state.network)));
+      });
+      return b;
+    });
+    nets.append(...netButtons);
+
+    const status = el("div", null, "meta");
+    const submit = el("button", "Отправить", "primary");
+    submit.disabled = true;
+    submit.addEventListener("click", async () => {
+      submit.disabled = true;
+      status.textContent = "Отправляем…";
+      const reply = await send({ type: "report", lat: coords.lat, lon: coords.lon, level: state.level, network: state.network });
+      if (reply.ok) {
+        panel.replaceChildren(el("div", "Спасибо! Сигнал отправлен оператору и появится на карте.", "done"));
+        onSent();
+        return;
+      }
+      status.textContent = reply.status === 429 ? "Слишком много отметок, попробуйте через минуту"
+        : reply.status === 422 ? "Дом вне района замеров — отметку принять нельзя"
+        : "Не удалось отправить: сервер недоступен";
+      submit.disabled = false;
+    });
+
+    panel.append(el("div", "Как здесь ловит связь?", "q"), levels, nets, submit, status);
+    return panel;
   }
 
   async function run() {
