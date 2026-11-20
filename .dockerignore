@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+var
+out
+tests
+extension
+.playwright-mcp
+*.md
+.gitignore
+.gitattributes
