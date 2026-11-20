@@ -16,6 +16,7 @@
 :root{color-scheme:light;--bg:#f3f4f6;--card:#fff;--line:#e5e7eb;--ink:#111827;--muted:#6b7280;--soft:#f6f7f9;--nav:#111a2e;
 --blue:#2563eb;--green:#1f9d55;--yellow:#e3a92b;--red:#d93636;--brown:#8a3c12;--pinkbg:#fdeeee;--yelbg:#fff8e6;--grnbg:#eefaf2;--yelink:#8a5a07}
 *{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}  /* иначе .btn{display:flex} показывает скрытые кнопки */
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip;
   display:flex;flex-direction:column;max-width:520px;margin:0 auto;-webkit-tap-highlight-color:transparent}
@@ -69,6 +70,12 @@ nav button.on{color:var(--blue)}
 nav svg{width:22px;height:22px}
 .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--nav);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
 .toast.on{opacity:1}
+.lsite{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.ltitle{font-weight:700;font-size:17px;margin-top:4px;overflow-wrap:anywhere}
+a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font-weight:500;text-decoration:none}
+.lval{display:flex;align-items:baseline;justify-content:center;gap:8px}
+.lval b{font-size:clamp(44px,14vw,60px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.lval small{color:var(--muted);font-size:13px}
 @media(prefers-reduced-motion:no-preference){#arc{transition:stroke-dashoffset .8s ease,stroke .4s}}
 </style>
 </head>
@@ -106,6 +113,31 @@ nav svg{width:22px;height:22px}
     <button class="btn ghost" id="refresh">Обновить местоположение</button>
   </div>
   <p class="note" id="hint">Медиана замеров оператора в квадрате 200 × 200 м вокруг вас.</p>
+  <p class="note">Квартира из объявления: в house.kg или lalafo нажмите «Поделиться» → Сигнал.kg.</p>
+</section>
+
+<section class="screen" id="s-listing">
+  <div class="card pad">
+    <div class="lsite" id="l-site">Объявление</div>
+    <div class="ltitle" id="l-title">—</div>
+    <a class="link" id="l-open" target="_blank" rel="noopener noreferrer" hidden>Открыть объявление →</a>
+  </div>
+  <div class="card gauge" style="margin-top:12px">
+    <div class="lval"><b id="l-value">—</b><small>дБм · RSRP</small></div>
+    <span class="pill p-gray" id="l-quality">Проверяем объявление…</span>
+  </div>
+  <div class="grid3">
+    <div class="card mini"><small>Днём</small><b id="l-day">—</b></div>
+    <div class="card mini"><small>Ночью</small><b id="l-night">—</b></div>
+    <div class="card mini"><small>Замеров</small><b id="l-samples">—</b></div>
+  </div>
+  <div class="warn" id="l-weak" hidden></div>
+  <div style="margin-top:16px;display:grid;gap:10px">
+    <button class="btn red" id="l-complain" disabled>В этом доме нет связи</button>
+    <button class="btn" id="l-retry" hidden>Проверить ещё раз</button>
+    <button class="btn ghost" id="l-here">Связь там, где я сейчас</button>
+  </div>
+  <p class="note" id="l-hint">Медиана замеров оператора в квадрате 200 × 200 м вокруг дома.</p>
 </section>
 
 <section class="screen" id="s-queue">
@@ -128,6 +160,8 @@ nav svg{width:22px;height:22px}
     <div class="pad"><button class="btn" id="install" hidden>Установить на главный экран</button>
       <p class="note" style="text-align:left;margin:0" id="installhint"></p></div>
   </div>
+  <div class="label">Квартира из объявления</div>
+  <div class="card pad" style="font-size:14px">Откройте объявление в приложении house.kg или lalafo → «Поделиться» → <b>Сигнал.kg</b>. Покажем связь в этом доме и примем жалобу. Пункт появляется в меню «Поделиться» на Android после установки Сигнал.kg на главный экран.</div>
   <div class="label">Конфиденциальность</div>
   <div class="card pad" style="font-size:14px">Жалоба содержит только координаты и время. Имя, телефон и данные устройства не отправляются. Геолокация берётся только когда вы открываете экран «Связь здесь».</div>
   <div class="label">О приложении</div>
@@ -165,11 +199,13 @@ function toast(text) {
 }
 
 /* --- вкладки --- */
-document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
-  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === "s-" + b.dataset.s));
-  if (b.dataset.s === "queue") renderQueue();
-}));
+function show(name) {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x.dataset.s === name));
+  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === "s-" + name));
+  if (name === "queue") renderQueue();
+  if (name === "here" && !point) locate();  // GPS спрашиваем, только когда человек открыл этот экран
+}
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => show(b.dataset.s)));
 
 /* --- сеть --- */
 function renderNet() {
@@ -177,7 +213,12 @@ function renderNet() {
   $("net").classList.toggle("off", !on);
   $("net").querySelector("span").textContent = on ? "Онлайн" : "Нет сети";
 }
-addEventListener("online", () => { renderNet(); flush(); locate(); });
+addEventListener("online", () => {
+  renderNet();
+  flush();
+  if (store.get("pendingListing", null)) checkListing(store.get("pendingListing", null));
+  if ($("s-here").classList.contains("on")) locate();
+});
 addEventListener("offline", renderNet);
 renderNet();
 
@@ -275,7 +316,7 @@ async function flush() {
   for (const r of reports.filter(r => r.status === "queued")) {
     try {
       const res = await fetch("/api/complaints", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat: r.lat, lon: r.lon, source: "app" }) });
+        body: JSON.stringify({ lat: r.lat, lon: r.lon, source: "app", ...(r.site ? { site: r.site } : {}) }) });
       if (res.ok) { r.status = "sent"; toast("Жалоба передана оператору"); }
       else if (res.status === 429) { toast("Слишком много жалоб — отправим позже"); break; }
       else { r.status = "rejected"; r.reason = res.status === 422 ? "вне района" : "ошибка"; }
@@ -312,7 +353,7 @@ function renderQueue() {
     b.textContent = `Нет связи · ${r.median === "—" ? "нет данных" : r.median + " дБм"}`;
     const meta = document.createElement("div");
     meta.className = "mono";
-    meta.textContent = `${r.cell} · ${new Date(r.ts).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+    meta.textContent = `${r.cell}${r.site ? " · " + r.site : ""} · ${new Date(r.ts).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
     text.append(b, meta);
     const st = document.createElement("span");
     st.className = "st " + (r.status === "queued" ? "q" : r.status === "sent" ? "ok" : "no");
@@ -349,8 +390,84 @@ $("installhint").textContent = standalone ? "Приложение установ
   : /iPhone|iPad/.test(navigator.userAgent) ? "На iPhone: «Поделиться» → «На экран „Домой“»."
   : "В Chrome: меню ⋮ → «Установить приложение» или кнопка выше.";
 
+/* --- квартира из объявления: «Поделиться» → Сигнал.kg --- */
+// Android открывает /app/?title=…&text=…&url=… (share_target в манифесте). Ссылку разные
+// приложения кладут то в url, то в text — сервер ищет её во всём тексте. Пока объявление
+// не проверено, текст лежит в хранилище: без сети проверим, когда связь появится.
+let listing = null;
+const shared = new URLSearchParams(location.search);
+const sharedText = ["url", "text", "title"].map(k => shared.get(k)).filter(Boolean).join(" ");
+if (sharedText) {
+  store.set("pendingListing", sharedText);
+  history.replaceState(null, "", location.pathname);  // при обновлении страницы не проверять заново
+}
+
+function renderListing(d, status, canRetry) {
+  listing = d;
+  const s = d && d.in_area ? d.signal : null;
+  const ok = s && s.status === "ok";
+  $("l-site").textContent = d ? `Объявление · ${d.site}` : "Объявление";
+  if (d) $("l-title").textContent = d.title || "Без названия";
+  $("l-open").hidden = !d;
+  if (d) $("l-open").href = d.url;  // адрес собран сервером: только house.kg и lalafo.kg
+  $("l-value").textContent = ok ? fmt(s.median) : "—";
+  $("l-value").style.color = ok ? COLORS[s.color] : "";
+  $("l-quality").className = "pill " + (ok ? "p-" + s.color : "p-gray");
+  $("l-quality").textContent = ok ? `Связь в этом доме: ${s.quality}` + (s.estimated ? " · по соседнему квадрату" : "")
+    : status || (!d ? "" : !d.in_area ? "Дом вне района замеров" : "Для этого дома пока нет замеров");
+  $("l-day").textContent = ok && s.day_median != null ? fmt(s.day_median) : "—";
+  $("l-night").textContent = ok && s.night_median != null ? fmt(s.night_median) : "—";
+  $("l-samples").textContent = ok ? s.samples : "—";
+  const weak = s && s.color !== "red" && s.nearest_weak_m != null && s.nearest_weak_m <= 300;
+  $("l-weak").hidden = !weak;
+  if (weak) $("l-weak").textContent = `В ${Math.max(50, Math.round(s.nearest_weak_m / 50) * 50)} м от дома слабая зона.`;
+  $("l-complain").disabled = !(d && d.in_area);
+  $("l-complain").textContent = "В этом доме нет связи";
+  $("l-retry").hidden = !canRetry;
+  $("l-hint").textContent = d && !d.in_area
+    ? "Замеры есть только для части центра Бишкека (около 3 × 4 км)."
+    : ok ? `Медиана замеров оператора в квадрате ${s.cell_id} (200 × 200 м) вокруг дома.`
+    : "Связь показываем по замерам оператора в квадрате 200 × 200 м вокруг дома.";
+}
+
+async function checkListing(text) {
+  show("listing");
+  $("l-title").textContent = "—";
+  renderListing(null, "Проверяем объявление…");
+  if (!navigator.onLine) return renderListing(null, "Нет сети — проверим, когда связь появится", true);
+  let res, body;
+  try {
+    res = await fetch("/api/listing?text=" + encodeURIComponent(text.slice(0, 2000)), { cache: "no-store" });
+    body = await res.json().catch(() => null);
+  } catch (e) {
+    return renderListing(null, "Нет связи с сервером — проверим позже", true);
+  }
+  if (res.ok && body) {
+    store.set("pendingListing", null);
+    return renderListing(body);
+  }
+  const retryable = res.status === 429 || res.status >= 500;
+  if (!retryable) store.set("pendingListing", null);  // ссылка не та или адреса нет — повтор не поможет
+  renderListing(null, (body && body.detail) ? body.detail[0].toUpperCase() + body.detail.slice(1)
+    : "Не удалось проверить объявление", retryable);
+}
+$("l-retry").addEventListener("click", () => checkListing(store.get("pendingListing", "") || sharedText));
+$("l-here").addEventListener("click", () => show("here"));
+$("l-complain").addEventListener("click", () => {
+  if (!listing || !listing.in_area) return;
+  const s = listing.signal;
+  reports.push({ id: Date.now(), lat: listing.lat, lon: listing.lon, site: listing.site, ts: new Date().toISOString(),
+    cell: s && s.cell_id || "—", median: s && s.status === "ok" ? fmt(s.median) : "—", status: "queued" });
+  save();
+  $("l-complain").disabled = true;
+  $("l-complain").textContent = "Жалоба принята";
+  toast(navigator.onLine ? "Жалоба отправляется…" : "Нет сети — жалоба в очереди");
+  flush();
+});
+
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).catch(() => {});
-locate();
+const pendingListing = store.get("pendingListing", null);
+if (pendingListing) checkListing(pendingListing); else locate();
 flush();
 }
 </script>

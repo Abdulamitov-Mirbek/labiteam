@@ -18,10 +18,16 @@ test("house.kg: координаты из JSON-LD GeoCoordinates", () => {
 
 test("lalafo: берётся объявление с id из адреса, а не похожее", () => {
   const html = nextData({ props: { pageProps: { similar: [{ id: 1, lat: 42.80, lng: 74.50 }],
-    dehydratedState: { queries: [{ state: { data: { id: 113744590, lat: 42.8746212, lng: 74.5697617 } } }] } } } });
+    dehydratedState: { queries: [{ state: { data: { id: 113744590, lat: 42.85625521708996, lng: 74.58782376781599 } } }] } } } });
   assert.deepEqual(
     extractCoords(html, "https://lalafo.kg/bishkek/ads/posutocnaa-kvartira-id-113744590"),
-    { lat: 42.8746212, lon: 74.5697617 });
+    { lat: 42.85625521708996, lon: 74.58782376781599 });
+});
+
+test("lalafo: точка «Бишкек по умолчанию» — это не адрес дома", () => {
+  // Её ставит lalafo, когда адрес не указан: на странице поиска так ~10 % объявлений.
+  const html = nextData({ ad: { id: 118401039, lat: 42.8746212, lng: 74.5697617 } });
+  assert.equal(extractCoords(html, "https://lalafo.kg/bishkek/ads/x-id-118401039"), null);
 });
 
 test("lalafo: нулевые координаты и чужой id не принимаются", () => {

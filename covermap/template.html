@@ -123,19 +123,16 @@ ol{padding-left:20px;margin:8px 0 0}ol li{margin-bottom:6px;font-size:14px}
 .badge button{font:500 13px Inter,system-ui,sans-serif;border:1px solid var(--ink);background:var(--card);color:var(--ink);border-radius:7px;padding:6px 10px;cursor:pointer;min-height:34px}
 .sources{display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:12px}
 pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBrains Mono",ui-monospace,monospace;overflow-x:auto;margin:10px 0 0}
-.phone{width:340px;height:700px;border:10px solid #111a2e;border-radius:38px;overflow:hidden;background:var(--bg);box-shadow:0 10px 30px rgba(15,23,42,.15)}
-.phone iframe{width:100%;height:100%;border:0;display:block}
-.phone .empty{height:100%;display:grid;place-content:center;padding:24px}
 .sample{color:var(--muted);font-size:12.5px;padding:10px 12px;border-top:1px solid var(--line)}
 .hbar{height:8px;border-radius:4px;background:var(--blue)}
-@media(max-width:900px){.phone{width:300px;height:620px;margin:0 auto}.mapview{grid-template-columns:1fr;height:auto}.side{border-right:0;border-bottom:1px solid var(--line)}.two,.half{grid-template-columns:1fr}}
+@media(max-width:900px){.mapview{grid-template-columns:1fr;height:auto}.side{border-right:0;border-bottom:1px solid var(--line)}.two,.half{grid-template-columns:1fr}}
 @media(max-width:600px){.layers{position:static;width:auto;margin:12px}.status span{display:none}.legend{display:none}th,td{padding:8px 6px;font-size:13px}.mapbox{min-height:460px}}
 </style>
 </head>
 <body>
 <nav>
   <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a8 8 0 0 1 12 0M4.5 9.5a4.5 4.5 0 0 1 7 0" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="8" cy="12" r="1.6" fill="#fff"/></svg></span>LABI · Сигнал.kg</div>
-  <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#app" data-v="app">Приложение</a><a href="#data" data-v="data">Данные</a>
+  <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#data" data-v="data">Данные</a>
   <div class="status"><i class="live" id="live-dot"></i><span id="live-text"></span><button class="btn" id="install-panel" hidden style="background:#24304a;border-color:#24304a;color:#fff">Установить панель</button><button class="btn dark" id="export">Скопировать result.json</button></div>
 </nav>
 <main>
@@ -216,26 +213,6 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
   </div>
 </div></section>
 
-<section class="view" id="v-app"><div class="page">
-  <h1>Приложение для жителей</h1><div class="sub">Сайт, который ставится на главный экран телефона и работает как программа: качество связи в вашем квадрате и жалоба «Здесь нет связи».</div>
-  <div class="two" style="margin-top:18px;grid-template-columns:auto minmax(0,1fr)">
-    <div class="phone" id="a-phone"></div>
-    <div>
-      <div class="card pad"><h2>Установить на телефон</h2><ol>
-        <li>Запустите сервер для локальной сети: <span class="mono">python -m server --host 0.0.0.0</span></li>
-        <li>Откройте на телефоне в Chrome адрес приложения: <b class="mono" id="a-url">…/app/</b></li>
-        <li>Меню ⋮ → «Установить приложение». На iPhone: «Поделиться» → «На экран „Домой“».</li></ol>
-        <p class="note">Браузер даёт установку и геолокацию только по HTTPS или на localhost. По адресу в локальной сети включите в Chrome на телефоне флаг «Insecure origins treated as secure» для этого адреса или откройте сервер через HTTPS.</p></div>
-      <div class="card pad" style="margin-top:12px"><h2>Что умеет</h2><ol>
-        <li>«Связь здесь» — медиана сигнала в вашем квадрате 200 × 200 м, днём и ночью, слабая зона рядом.</li>
-        <li>«Здесь нет связи» — жалоба с координатами сразу появляется на вкладке «Жалобы».</li>
-        <li>Без сети жалобы ждут в очереди и уходят сами, когда сеть появится.</li></ol>
-        <p class="note">Уровень сигнала телефона (RSRP) браузер сайтам не отдаёт, поэтому приложение показывает данные карты, а не меряет сигнал само.</p></div>
-      <div class="darkcard" style="margin-top:12px"><h2>Панель тоже ставится как программа</h2><p>В Chrome на компьютере: значок установки в адресной строке или кнопка «Установить панель» в шапке.</p></div>
-    </div>
-  </div>
-</div></section>
-
 <section class="view" id="v-data"><div class="page">
   <div class="row"><div><h1>Данные и алгоритмы</h1><div class="sub">Из чего строится карта и как выбраны площадки.</div></div><button class="btn primary" id="export2">Скопировать result.json</button></div>
   <div class="label">Источники данных</div>
@@ -271,7 +248,7 @@ const result = { worst_cells: DATA.worst.map(w => ({ cell_id: w.id, rsrp_median:
   best_candidates: S.brute.sites, dropped_rows: S.dropped_rows, covered_weak_cells: S.covered_weak_cells };
 
 /* --- вкладки --- */
-const VIEWS = ["map", "complaints", "plugin", "app", "data"];
+const VIEWS = ["map", "complaints", "plugin", "data"];
 let map;
 function route() {
   const v = (location.hash || "#map").slice(1);
@@ -569,16 +546,8 @@ $("p-states").innerHTML = [
   badge(HEX.red, "слабая (−117) · ночью лучше (−112)", "", false),
   badge("#8b919c", "Дом вне района, где есть замеры связи", "", false)].join("");
 
-/* --- приложение и установка панели --- */
+/* --- установка панели --- */
 if (DATA.live) {
-  const frame = document.createElement("iframe");
-  frame.src = "app/?demo=1";  // в превью — демо-точка, геолокация во фрейме недоступна
-  frame.title = "Приложение Сигнал.kg";
-  frame.loading = "lazy";
-  $("a-phone").append(frame);
-  fetch("api/info").then(r => r.json()).then(info => {
-    $("a-url").textContent = info.lan_urls[0] || location.origin + info.app_path;
-  }).catch(() => { $("a-url").textContent = location.origin + "/app/"; });
   // Манифест и service worker нужны, чтобы панель ставилась как программа.
   const manifest = document.createElement("link");
   manifest.rel = "manifest";
@@ -594,9 +563,6 @@ if (DATA.live) {
     installEvent = null;
     $("install-panel").hidden = true;
   });
-} else {
-  $("a-phone").innerHTML = `<div class="empty">Приложение открывается с сервера:<br><span class="mono">python -m server</span><br>→ http://127.0.0.1:8000/app/</div>`;
-  $("a-url").textContent = "http://<адрес компьютера>:8000/app/";
 }
 
 /* --- данные --- */

@@ -5,12 +5,16 @@
 
   // Широкая рамка вокруг Бишкека: всё за её пределами — мусор или другой город.
   const AREA = { latMin: 42.6, latMax: 43.1, lonMin: 74.3, lonMax: 74.9 };
+  // Точки «город по умолчанию»: их ставит сайт, когда адрес не указан. Это не дом,
+  // и показывать по ним связь нельзя (lalafo: ~10 % объявлений Бишкека).
+  const PLACEHOLDERS = [[42.8746212, 74.5697617]];
 
   function point(lat, lon) {
     lat = Number(lat);
     lon = Number(lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     if (lat < AREA.latMin || lat > AREA.latMax || lon < AREA.lonMin || lon > AREA.lonMax) return null;
+    if (PLACEHOLDERS.some(([a, b]) => Math.abs(lat - a) < 1e-6 && Math.abs(lon - b) < 1e-6)) return null;
     return { lat, lon };
   }
 

@@ -87,7 +87,7 @@ def test_cells_and_result(client):
 def test_panel_is_live(client):
     r = client.get("/")
     assert r.status_code == 200 and '"live":true' in r.text
-    assert r.headers["x-frame-options"] == "SAMEORIGIN"
+    assert r.headers["x-frame-options"] == "DENY"
     assert r.headers["x-content-type-options"] == "nosniff"
 
 
@@ -181,5 +181,7 @@ def test_complaint_from_app(client):
     assert r.status_code == 201 and r.json()["source"] == "app"
 
 
-def test_info_lists_app_path(client):
-    assert client.get("/api/info").json()["app_path"] == "/app/"
+def test_panel_has_no_app_tab(client):
+    page = client.get("/").text
+    assert 'data-v="app"' not in page and 'id="v-app"' not in page
+    assert client.get("/api/info").status_code == 404

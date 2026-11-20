@@ -2,6 +2,7 @@
 
 GET  /                     панель оператора (карта, «Что если», игра, жалобы)
 GET  /api/signal?lat=&lon= качество связи в точке — для Chrome-плагина
+GET  /api/listing?url=     связь в доме из объявления house.kg или lalafo.kg — «Поделиться» на телефоне
 GET  /api/cells            сетка 200×200 м с медианами и цветами
 GET  /api/result           result.json
 POST /api/complaints       жалоба «Здесь нет связи» {lat, lon, source, site}
@@ -16,7 +17,6 @@ GET  /api/complaints       жалобы с id больше after и число �
 import json
 import math
 import os
-import socket
 import threading
 import time
 from collections import deque
@@ -30,6 +30,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from covermap.pipeline import Report, build
 from covermap.render import render
 from covermap.signal import SignalIndex
+
+from .listing import (
+    FetchError, HttpFetcher, RateLimit, TtlCache, extract_coords, extract_title, find_listing_url, site_of,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 WEBAPP = ROOT / "webapp"
@@ -48,22 +52,11 @@ SITES = {"house.kg", "lalafo.kg"}
 MAX_BODY_BYTES = 1024
 COMPLAINTS_PER_MINUTE = 5      # с одного IP
 COMPLAINTS_KEEP = 5000         # сколько последних жалоб держать в памяти
+LISTINGS_PER_MINUTE = 20       # проверок объявлений с одного IP
 
 
 def error(status: int, code: str, detail: str, **headers) -> JSONResponse:
     return JSONResponse({"error": code, "detail": detail}, status_code=status, headers=headers or None)
-
-
-def lan_addresses() -> list[str]:
-    """IP-адреса компьютера в локальной сети — чтобы открыть приложение с телефона."""
-    found = []
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.connect(("10.255.255.255", 1))  # пакеты не отправляются, только выбор интерфейса
-            found.append(probe.getsockname()[0])
-    except OSError:
-        pass
-    return [ip for ip in found if not ip.startswith("127.")]
 
 
 def parse_coordinate(raw) -> float | None:
@@ -142,6 +135,7 @@ def create_app(
     dgis_key: str | None = None,
     complaints_file: Path | None = None,
     origins: list[str] | None = None,
+    listing_fetcher=None,
 ) -> FastAPI:
     data_dir = Path(data_dir or os.environ.get("COVERMAP_DATA") or ROOT / "data" / "07_coverage")
     dgis_key = dgis_key if dgis_key is not None else os.environ.get("DGIS_KEY", "")
@@ -179,8 +173,7 @@ def create_app(
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        # SAMEORIGIN: панель показывает приложение во вкладке «Приложение».
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
         return response
 
@@ -218,11 +211,6 @@ def create_app(
     async def panel_worker():
         return FileResponse(WEBAPP / "panel-sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
-    @app.get("/api/info")
-    async def info(request: Request):
-        port = request.url.port or 80
-        return {"app_path": "/app/", "lan_urls": [f"http://{ip}:{port}/app/" for ip in lan_addresses()]}
-
     @app.get("/api/signal")
     async def signal(lat: str = "", lon: str = ""):
         lat_value, lon_value = parse_coordinate(lat), parse_coordinate(lon)
@@ -232,6 +220,48 @@ def create_app(
         if result is None:
             return error(422, "out_of_area", "точка вне района замеров")
         return result
+
+    fetcher = listing_fetcher or HttpFetcher()
+    listing_cache = TtlCache(ttl_s=600)
+    listing_limit = RateLimit(LISTINGS_PER_MINUTE)
+
+    @app.get("/api/listing")
+    async def listing(request: Request, url: str = "", text: str = "", title: str = ""):
+        """Связь в доме из объявления house.kg или lalafo.kg: для «Поделиться» на телефоне.
+
+        Ссылку можно передать в url или внутри text — приложения кладут её по-разному.
+        """
+        link = find_listing_url(url) or find_listing_url(text) or find_listing_url(title)
+        if not link:
+            return error(400, "unsupported_link", "нужна ссылка на объявление house.kg или lalafo.kg")
+        wait = listing_limit.wait(client_ip(request))
+        if wait:
+            return error(429, "rate_limited", "слишком много проверок, попробуйте позже", **{"Retry-After": str(wait)})
+        cached = listing_cache.get(link)
+        if cached is None:
+            try:
+                page = await fetcher.fetch(link)
+            except FetchError:
+                # Не кешируем: сайт может ожить через минуту.
+                return error(502, "site_unavailable", "сайт объявления не ответил, попробуйте ещё раз")
+            # house.kg на снятое объявление отвечает редиректом на главную — это тоже «нет объявления».
+            if page.status in (404, 410) or not find_listing_url(page.url):
+                cached = (404, "not_found", "объявление не найдено или снято")
+            elif page.status != 200:
+                return error(502, "site_unavailable", "сайт объявления не ответил, попробуйте ещё раз")
+            elif (coords := extract_coords(page.html, page.url)) is None:
+                cached = (422, "no_coordinates", "в объявлении не указан точный адрес дома")
+            else:
+                lat, lon = coords
+                cached = {
+                    "url": link, "site": site_of(link), "title": extract_title(page.html),
+                    "lat": lat, "lon": lon, "in_area": report.bounds.contains(lat, lon),
+                    "signal": index.lookup(lat, lon),
+                }
+            listing_cache.put(link, cached)
+        if isinstance(cached, tuple):
+            return error(*cached)
+        return cached
 
     @app.get("/api/cells")
     async def all_cells():
