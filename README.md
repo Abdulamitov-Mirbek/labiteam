@@ -86,7 +86,7 @@ DGIS_KEY=ваш-ключ python -m server        # http://127.0.0.1:8000
 | `POST /api/reports {lat, lon, level, network, source, site}` | отметка жителя «как ловит связь»: `level` — good, ok, bad или none |
 | `GET /api/reports?after=ID` | отметки новее ID — вкладка «Сигналы» и карта |
 | `GET /api/crowd?lat=&lon=` | оценка жителей в радиусе 300 м — для домов вне района замеров |
-| `POST /api/measurements {lat, lon, accuracy_m, rsrp_dbm, bars, network}` | сила связи, которую житель видит на телефоне: дБм и/или палочки 0–4 |
+| `POST /api/measurements {lat, lon, accuracy_m, method, …}` | замер связи жителем: `auto` — сам приложением (пинг, тип и оценка сети), `manual` — дБм и/или палочки 0–4 |
 | `GET /api/measurements?after=ID` | замеры силы связи — вкладка «Замеры» у оператора |
 | `GET /api/listings` | квартиры, проверенные через «Поделиться» или плагин, — карта в приложении |
 | `GET /api/complaints?after=ID` | жалобы новее ID и число отклонённых лимитом — панель опрашивает раз в 3 секунды |

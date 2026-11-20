@@ -57,6 +57,13 @@ body.mapmode main{padding:0;overflow:hidden;position:relative}
 .me{width:16px!important;height:16px!important;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.2)}
 .pop b{display:block;font-size:14px;margin-bottom:4px}.pop .q{font-weight:600}.pop a{display:inline-block;margin-top:6px;color:var(--blue);font-weight:600}
 .leaflet-container{font-family:Inter,system-ui,sans-serif}
+.autogrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 4px}
+.autogrid div{background:var(--soft);border-radius:12px;padding:10px 12px}
+.autogrid small{display:block;color:var(--muted);font-size:12px}
+.autogrid b{display:block;font-size:20px;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+details.manual summary{cursor:pointer;list-style:none;font-size:15px}
+details.manual summary::before{content:"▸ ";color:var(--blue)}
+details.manual[open] summary::before{content:"▾ "}
 .bars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0 12px}
 .bars button{min-height:64px;border:1px solid var(--line);background:var(--card);border-radius:12px;font:700 15px Inter,system-ui,sans-serif;color:var(--ink);cursor:pointer;display:grid;justify-items:center;align-content:center;gap:6px}
 .bars button[aria-pressed="true"]{border-color:var(--blue);background:#eef3fe;color:var(--blue)}
@@ -171,8 +178,17 @@ a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font
     <div style="text-align:right"><small style="color:var(--muted)">Замеров в квадрате</small><div><b id="samples" style="font-size:16px">—</b></div></div></div>
   </div>
   <div class="warn" id="weak" hidden></div>
-  <div class="card pad" style="margin-top:12px" id="measure">
-    <b style="font-size:16px">Сила связи здесь</b>
+  <div class="card pad" style="margin-top:12px" id="auto">
+    <div class="row"><b style="font-size:16px">Автозамер связи</b><span class="pill p-gray" id="a-verdict" style="margin:0">—</span></div>
+    <div class="autogrid">
+      <div><small>Сеть</small><b id="a-net">—</b></div>
+      <div><small>Задержка</small><b id="a-ping">—</b><small>мс</small></div>
+      <div><small>Скорость</small><b id="a-down">—</b><small>Мбит/с, оценка</small></div>
+    </div>
+    <p class="note" id="a-hint" style="text-align:left">Меряем сами, как только определили ваше место, и отправляем оператору.</p>
+  </div>
+  <details class="card pad manual" style="margin-top:12px" id="measure">
+    <summary><b>Уточнить вручную: палочки и дБм</b></summary>
     <p class="note" style="text-align:left;margin:4px 0 0">Сколько палочек связи сейчас на вашем телефоне?</p>
     <div class="bars" id="bars">
       <button data-bars="0" aria-pressed="false"><span class="b"><i></i><i></i><i></i><i></i></span>0</button>
@@ -190,7 +206,7 @@ a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font
     <div class="nets" id="nets"><small>Сеть:</small><button data-net="5G">5G</button><button data-net="4G">4G</button><button data-net="3G">3G</button><button data-net="2G">2G</button></div>
     <button class="btn" id="sendmeasure" disabled>Отправить замер</button>
     <p class="note" style="text-align:left" id="m-hint">Замер вместе с вашей точкой увидит оператор на своей карте.</p>
-  </div>
+  </details>
   <div style="margin-top:16px;display:grid;gap:10px">
     <button class="btn red" id="complain">Здесь нет связи</button>
     <button class="btn ghost" id="refresh">Обновить местоположение</button>
@@ -503,21 +519,28 @@ function setStatus(text) {
 
 async function lookup(p) {
   point = p;
-  $("gps").textContent = p.demo ? "демо" : `±${Math.round(p.accuracy)} м`;
+  $("gps").textContent = p.demo ? "демо" : p.accuracy >= 1000 ? `±${Math.round(p.accuracy / 1000)} км` : `±${Math.round(p.accuracy)} м`;
+  if (p.accuracy > COARSE_M) {
+    // Место по IP или Wi-Fi, а не GPS: квадрат 200 м не определить — чужие данные не показываем.
+    showSignal(null);
+    setStatus("Место определено неточно");
+    $("hint").textContent = `Точность ±${Math.round(p.accuracy / 1000)} км — это не GPS, а примерное место по IP или Wi-Fi. Откройте приложение на телефоне с включённым GPS.`;
+    return autoMeasure(p);
+  }
   try {
     const res = await fetch(`/api/signal?lat=${p.lat}&lon=${p.lon}`, { cache: "no-store" });
     if (res.status === 422) {
       p.outside = true;
       showSignal(null);
-      return showCrowd(p);
+      await showCrowd(p);
+      return autoMeasure(p);
     }
     if (!res.ok) throw new Error(res.status);
     const s = await res.json();
     store.set("last", { s, p });
     if (s.status === "ok") showSignal(s); else { showSignal(null); setStatus("Рядом пока нет замеров"); }
-    $("hint").textContent = p.accuracy > COARSE_M
-      ? `Точность ±${Math.round(p.accuracy / 1000)} км — это не GPS, а примерное место по Wi-Fi или IP. Включите GPS на телефоне.`
-      : "Медиана замеров оператора в квадрате 200 × 200 м вокруг вас.";
+    $("hint").textContent = "Медиана замеров оператора в квадрате 200 × 200 м вокруг вас.";
+    autoMeasure(p);
   } catch (e) {
     const last = store.get("last", null);
     if (last) { showSignal(last.s); $("hint").textContent = "Нет сети — показан последний результат."; }
@@ -544,7 +567,90 @@ function locate() {
 }
 $("refresh").addEventListener("click", locate);
 
-/* --- замер силы связи: житель вводит то, что видит на телефоне --- */
+/* --- автозамер: без ввода руками --- */
+// Браузер не отдаёт сайтам уровень сигнала (дБм), но сам сообщает тип сети и её оценку,
+// а задержку до сервера мы меряем. Из этого — итог «хорошо / средне / плохо».
+const AUTO_LABEL = { green: "Хорошая связь", yellow: "Средняя связь", red: "Слабая связь" };
+const mid = list => { const a = [...list].sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+function metres(a, b) {
+  const r = Math.PI / 180, x = (b.lon - a.lon) * r * Math.cos((a.lat + b.lat) * r / 2), y = (b.lat - a.lat) * r;
+  return Math.sqrt(x * x + y * y) * 6371000;
+}
+async function pingOnce(url) {
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const t0 = performance.now();
+    const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    await res.arrayBuffer();
+    return performance.now() - t0;
+  } finally { clearTimeout(timer); }
+}
+async function measurePing() {
+  for (const url of ["https://speed.cloudflare.com/__down?bytes=0", "/health"]) {
+    try {
+      const samples = [];
+      for (let i = 0; i < 4; i++) samples.push(await pingOnce(url));
+      return Math.round(mid(samples.slice(1)));  // первый запрос — установка соединения
+    } catch (e) { /* пробуем запасной */ }
+  }
+  return null;
+}
+function autoColor(ping, effective) {
+  if (effective === "slow-2g" || effective === "2g" || ping > 400) return "red";
+  if (effective === "3g" || ping > 150) return "yellow";
+  return "green";
+}
+let autoRunning = false;
+async function autoMeasure(p) {
+  if (autoRunning) return;
+  autoRunning = true;
+  try {
+    const conn = navigator.connection || {};
+    const type = ["cellular", "wifi", "ethernet"].includes(conn.type) ? conn.type : conn.type ? "other" : "unknown";
+    const effective = ["slow-2g", "2g", "3g", "4g"].includes(conn.effectiveType) ? conn.effectiveType : null;
+    $("a-net").textContent = type === "cellular" ? "Мобильная" : type === "wifi" ? "Wi-Fi" : type === "ethernet" ? "Кабель"
+      : effective ? effective.toUpperCase() : "—";
+    $("a-down").textContent = Number.isFinite(conn.downlink) ? conn.downlink.toFixed(1) : "—";
+    $("a-hint").textContent = "Меряем задержку…";
+    const ping = await measurePing();
+    if (ping === null) {
+      $("a-ping").textContent = "—";
+      $("a-verdict").className = "pill p-red";
+      $("a-verdict").textContent = "Нет интернета";
+      $("a-hint").textContent = "Интернета нет совсем. Если у вас есть жалоба — нажмите «Здесь нет связи», она уйдёт, когда сеть появится.";
+      return;
+    }
+    const color = autoColor(ping, effective);
+    $("a-ping").textContent = ping;
+    $("a-verdict").className = "pill p-" + color;
+    $("a-verdict").textContent = AUTO_LABEL[color];
+    const time = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    if (p.demo) return void ($("a-hint").textContent = "Демо-точка: замер оператору не отправляется.");
+    if (p.outsideCity) return void ($("a-hint").textContent = "Вы не в Бишкеке — замер не отправляется.");
+    if (p.accuracy > COARSE_M) return void ($("a-hint").textContent = "Место определено неточно — замер не отправлен. Включите GPS.");
+    if (type === "wifi" || type === "ethernet") {
+      return void ($("a-hint").textContent = "Вы на Wi-Fi — это не мобильная связь, оператору не отправляем. Выключите Wi-Fi, и замер уйдёт сам.");
+    }
+    const last = store.get("autoLast", null);
+    if (last && Date.now() - last.t < 5 * 60e3 && metres(last, p) < 100) {
+      return void ($("a-hint").textContent = `В этом месте замер уже отправлен в ${last.time}. Следующий — через 5 минут или в 100 м отсюда.`);
+    }
+    const body = { method: "auto", lat: p.lat, lon: p.lon, accuracy_m: Math.round(p.accuracy), ping_ms: ping,
+      rtt_ms: Number.isFinite(conn.rtt) ? conn.rtt : null, downlink_mbps: Number.isFinite(conn.downlink) ? conn.downlink : null,
+      effective, connection: type };
+    try {
+      const res = await fetch("/api/measurements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) {
+        store.set("autoLast", { lat: p.lat, lon: p.lon, t: Date.now(), time });
+        $("a-hint").textContent = `Отправлено оператору в ${time} — он видит замер на своей карте.`;
+      } else {
+        $("a-hint").textContent = res.status === 429 ? "Слишком много замеров — следующий отправим позже." : "Сервер не принял замер.";
+      }
+    } catch (e) { $("a-hint").textContent = "Нет связи с сервером — замер не отправлен."; }
+  } finally { autoRunning = false; }
+}
+
+/* --- замер силы связи вручную: палочки и дБм с экрана телефона --- */
 // Браузер не отдаёт сайтам силу сигнала (RSRP), поэтому её указывает сам житель:
 // палочки — быстро, дБм с экрана «Состояние SIM-карты» — точно (та же шкала, что у оператора).
 const measure = { bars: null, network: null };

@@ -185,21 +185,6 @@
     return panel;
   }
 
-  // Текст плашки там, где нет замеров оператора: оценка жителей в радиусе 300 м.
-  function crowdText(c) {
-    const meta = "Замеров оператора здесь нет — оценка жителей в радиусе 300 м";
-    if (!c || !c.reports) {
-      const complaints = c && c.complaints ? ` · жалоб «нет связи» рядом: ${c.complaints}` : "";
-      return { color: "none", text: "Замеров связи здесь пока нет. Отметьте, как ловит, — вы будете первым",
-               meta: "Ваша отметка появится на карте оператора" + complaints };
-    }
-    const names = { good: "отлично", ok: "нормально", bad: "плохо", none: "нет связи" };
-    const word = n => n % 10 === 1 && n % 100 !== 11 ? "отметка" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "отметки" : "отметок";
-    return { color: c.color || "none",
-             text: `Связь по оценке жителей: ${names[c.verdict]} (${c.reports} ${word(c.reports)} рядом)`,
-             meta: meta + (c.complaints ? ` · жалоб «нет связи»: ${c.complaints}` : "") };
-  }
-
   async function run() {
     currentUrl = location.href;
     if (host) { host.remove(); host = null; }
@@ -209,20 +194,19 @@
     if (location.href !== currentUrl) return;  // пока искали, пользователь ушёл со страницы
     if (!coords) return;  // у объявления нет координат — плашку не показываем
 
+    // Квартира сразу уходит на страницу оператора — с выводом по зоне или «вне зоны».
+    send({ type: "listing", lat: coords.lat, lon: coords.lon });
     const reply = await send({ type: "signal", lat: coords.lat, lon: coords.lon });
     if (location.href !== currentUrl) return;
-    if (reply.ok && reply.body && reply.body.status === "ok") {
+    if (reply.ok && reply.body && reply.body.status === "ok" && describe(reply.body)) {
       const s = reply.body;
       const meta = `Медиана замеров в квадрате 200×200 м · ${s.samples} замеров` +
-        (s.estimated ? " · оценка по соседнему квадрату" : "");
+        (s.estimated ? " · оценка по соседнему квадрату" : "") + " · квартира передана оператору";
       mount(badge(s.color, describe(s), meta, coords));
-    } else if (reply.ok || reply.status === 422) {
-      // Замеров оператора здесь нет — показываем, что говорят жители рядом,
-      // и даём отметить связь самому: так карта заполняется и вне района замеров.
-      const crowd = await send({ type: "crowd", lat: coords.lat, lon: coords.lon });
-      if (location.href !== currentUrl) return;
-      const view = crowdText(crowd.ok ? crowd.body : null);
-      mount(badge(view.color, view.text, view.meta, crowd.status === 422 ? null : coords));
+    } else if (reply.status === 422) {
+      mount(badge("none", "Дом вне зоны замеров", "Квартира отмечена на карте оператора", null));
+    } else if (reply.ok) {
+      mount(badge("none", "Для этого дома пока нет замеров", "Квартира отмечена на карте оператора", null));
     } else {
       mount(badge("none", "Сервис оценки связи недоступен", null, null));
     }

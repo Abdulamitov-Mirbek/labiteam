@@ -43,25 +43,14 @@ test("координаты вне Бишкека и мусор отбрасыв�
   assert.equal(extractCoords(null, ""), null);
 });
 
-test("плашка: хорошая связь, ночью хуже, слабая зона рядом", () => {
-  const text = describe({ status: "ok", quality: "хорошая", color: "green", median: -84.2,
-    day_median: -83, night_median: -97, nearest_weak_m: 280 });
-  assert.equal(text, "Связь в этом доме: хорошая (−84) · ночью хуже (−97) · ⚠️ в 300 м слабая зона");
-});
-
-test("плашка: без ночных данных и без слабой зоны рядом", () => {
-  const text = describe({ status: "ok", quality: "средняя", color: "yellow", median: -98.3,
-    day_median: -96.2, night_median: null, nearest_weak_m: 569 });
-  assert.equal(text, "Связь в этом доме: средняя (−98)");
-});
-
-test("плашка: в красном квадрате предупреждение о соседней зоне не дублируется", () => {
-  const text = describe({ status: "ok", quality: "слабая", color: "red", median: -112,
-    day_median: -111, night_median: -112, nearest_weak_m: 0 });
-  assert.equal(text, "Связь в этом доме: слабая (−112) · днём и ночью одинаково");
+test("плашка: вывод по зоне карты", () => {
+  assert.equal(describe({ status: "ok", color: "green", median: -84.2 }), "Хорошая связь — зелёная зона (−84 дБм)");
+  assert.equal(describe({ status: "ok", color: "yellow", median: -98.3 }), "Средняя связь — жёлтая зона (−98 дБм)");
+  assert.equal(describe({ status: "ok", color: "red", median: -112 }), "Плохой интернет — дом в красной зоне (−112 дБм)");
 });
 
 test("плашка: нет данных — нет текста", () => {
   assert.equal(describe({ status: "no_data" }), null);
+  assert.equal(describe({ status: "ok", color: "purple", median: -90 }), null);
   assert.equal(describe(null), null);
 });

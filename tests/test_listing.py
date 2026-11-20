@@ -242,15 +242,19 @@ def test_checked_listing_appears_on_app_map(make_client):
     flats = client.get("/api/listings").json()["listings"]
     assert [f["url"] for f in flats] == [HOUSE_URL, LALAFO_URL]  # новые первыми
     house = flats[0]
-    assert set(house) == {"url", "site", "title", "lat", "lon", "cell_id", "color", "quality", "median", "checked"}
+    assert set(house) == {"url", "site", "title", "lat", "lon", "in_area", "cell_id", "color", "quality", "median", "checked"}
+    assert house["in_area"] is True
     assert house["cell_id"] == "X017_Y015" and house["color"] in ("green", "yellow", "red")
 
 
-def test_listing_outside_area_or_without_address_is_not_on_map(make_client):
+def test_listing_outside_area_is_remembered_as_outside_zone(make_client):
     client, _ = make_client({HOUSE_URL: house_page(lat=42.90, lon=74.62), LALAFO_URL: "<html></html>"})
     client.get("/api/listing", params={"url": HOUSE_URL})
-    client.get("/api/listing", params={"url": LALAFO_URL})
-    assert client.get("/api/listings").json()["listings"] == []
+    client.get("/api/listing", params={"url": LALAFO_URL})  # без адреса — не запоминается
+    flats = client.get("/api/listings").json()["listings"]
+    assert len(flats) == 1
+    assert flats[0]["in_area"] is False and flats[0]["quality"] == "вне зоны"
+    assert flats[0]["color"] is None and flats[0]["cell_id"] is None and flats[0]["median"] is None
 
 
 def test_listings_survive_restart(tmp_path):

@@ -33,14 +33,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message || !validPoint(message)) return false;
   if (message.type === "signal") {
     const query = new URLSearchParams({ lat: message.lat, lon: message.lon });
-    call("/api/signal?" + query).then(reply => {
-      sendResponse(reply);
-      // Квартира со связью попадает на карту в приложении. Сервер сам загружает
-      // объявление по адресу вкладки (его сообщает Chrome) и проверяет координаты.
-      if (reply.ok && reply.body && reply.body.status === "ok" && listingSite(sender)) {
-        call("/api/listing?" + new URLSearchParams({ url: sender.url }));
-      }
-    });
+    call("/api/signal?" + query).then(sendResponse);
+    return true;
+  }
+  if (message.type === "listing") {
+    // Квартира автоматически уходит оператору: сервер сам загружает объявление по адресу
+    // вкладки (его сообщает Chrome, а не страница) и проверяет координаты и зону.
+    if (!listingSite(sender)) return false;
+    call("/api/listing?" + new URLSearchParams({ url: sender.url })).then(sendResponse);
     return true;
   }
   if (message.type === "crowd") {

@@ -296,6 +296,7 @@ def test_measurement_roundtrip(client, tmp_path):
     record = r.json()
     assert record["cell_id"] == "X017_Y015" and record["rsrp_dbm"] == -98 and record["bars"] == 2
     assert record["color"] == "yellow" and record["source"] == "app" and record["network"] == "4G"
+    assert record["method"] == "manual"
     assert client.get("/api/measurements").json()["measurements"] == [record]
     saved = (tmp_path / "measurements.jsonl").read_text()
     assert "127.0.0.1" not in saved and "testclient" not in saved
@@ -326,7 +327,7 @@ def test_measurement_bad_fields_400(client, change):
 
 def test_measurement_outside_city_and_limit(client):
     assert client.post("/api/measurements", json={**MEASURE, "lat": 42.5}).status_code == 422
-    for _ in range(server_app.COMPLAINTS_PER_MINUTE):
+    for _ in range(server_app.MEASUREMENTS_PER_MINUTE):
         assert client.post("/api/measurements", json=MEASURE).status_code == 201
     assert client.post("/api/measurements", json=MEASURE).status_code == 429
 
@@ -345,3 +346,35 @@ def test_crowd_bars_only(client):
     client.post("/api/measurements", json={**MEASURE, "rsrp_dbm": None, "bars": 4})
     body = client.get("/api/crowd", params={"lat": MEASURE["lat"], "lon": MEASURE["lon"]}).json()
     assert body["median_rsrp_dbm"] is None and body["measurements_color"] == "green"
+
+
+# --- автозамер в приложении: без ввода руками -------------------------------------------
+
+AUTO = {"lat": 42.8687, "lon": 74.604, "accuracy_m": 15, "method": "auto", "ping_ms": 62, "rtt_ms": 100,
+        "downlink_mbps": 9.5, "effective": "4g", "connection": "cellular"}
+
+
+def test_auto_measurement_roundtrip(client):
+    r = client.post("/api/measurements", json=AUTO)
+    assert r.status_code == 201
+    m = r.json()
+    assert m["method"] == "auto" and m["color"] == "green" and m["cell_id"] == "X017_Y015"
+    assert (m["ping_ms"], m["rtt_ms"], m["downlink_mbps"], m["effective"], m["connection"]) == (62, 100, 9.5, "4g", "cellular")
+    assert "rsrp_dbm" not in m
+
+
+@pytest.mark.parametrize("change, color", [
+    ({"ping_ms": 120}, "green"), ({"ping_ms": 151}, "yellow"), ({"effective": "3g"}, "yellow"),
+    ({"ping_ms": 401}, "red"), ({"effective": "2g"}, "red"), ({"effective": "slow-2g", "ping_ms": 20}, "red"),
+    ({"effective": None, "rtt_ms": None, "downlink_mbps": None}, "green"),
+])
+def test_auto_measurement_color(client, change, color):
+    assert client.post("/api/measurements", json={**AUTO, **change}).json()["color"] == color
+
+
+@pytest.mark.parametrize("change", [
+    {"ping_ms": None}, {"ping_ms": -5}, {"effective": "5g"}, {"connection": "satellite"},
+    {"rtt_ms": "fast"}, {"downlink_mbps": -1}, {"method": "guess"},
+])
+def test_auto_measurement_bad_fields(client, change):
+    assert client.post("/api/measurements", json={**AUTO, **change}).status_code == 400

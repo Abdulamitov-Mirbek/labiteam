@@ -73,20 +73,12 @@
   }
 
   // Текст плашки по ответу GET /api/signal.
+  // Текст плашки по ответу GET /api/signal: вывод по зоне карты, в которую попал дом.
+  const ZONES = { green: "Хорошая связь — зелёная зона", yellow: "Средняя связь — жёлтая зона",
+                  red: "Плохой интернет — дом в красной зоне" };
   function describe(signal) {
-    if (!signal || signal.status !== "ok") return null;
-    const parts = [`Связь в этом доме: ${signal.quality} (${dbm(signal.median)})`];
-    const { day_median: day, night_median: night } = signal;
-    if (day !== null && night !== null && day !== undefined && night !== undefined) {
-      if (night <= day - 3) parts.push(`ночью хуже (${dbm(night)})`);
-      else if (night >= day + 3) parts.push(`ночью лучше (${dbm(night)})`);
-      else parts.push("днём и ночью одинаково");
-    }
-    const weak = signal.nearest_weak_m;
-    if (signal.color !== "red" && weak !== null && weak !== undefined && weak <= 300) {
-      parts.push(`⚠️ в ${Math.max(50, Math.round(weak / 50) * 50)} м слабая зона`);
-    }
-    return parts.join(" · ");
+    if (!signal || signal.status !== "ok" || !ZONES[signal.color]) return null;
+    return `${ZONES[signal.color]} (${dbm(signal.median)} дБм)`;
   }
 
   function dbm(value) {

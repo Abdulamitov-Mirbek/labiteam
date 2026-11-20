@@ -63,6 +63,10 @@ CROWD_RADIUS_M = 300  # отметки жителей в этом радиусе
 # Замер силы связи жителем: дБм с экрана телефона (та же шкала, что RSRP в замерах
 # оператора) и/или число палочек. Браузер сам силу сигнала не отдаёт — её вводит житель.
 RSRP_RANGE = (-140.0, -44.0)
+MEASUREMENTS_PER_MINUTE = 20  # с одного IP: приложение шлёт автозамер при каждом новом месте
+# Автозамер в приложении — то, что браузер отдаёт сам: задержка, оценка сети и скорости.
+CONNECTIONS = {"cellular", "wifi", "ethernet", "other", "unknown"}
+EFFECTIVE = {"slow-2g", "2g", "3g", "4g"}
 MAX_BARS = 4
 MAX_ACCURACY_M = 5000
 DEFAULT_ORIGINS = "https://house.kg,https://www.house.kg,https://lalafo.kg,https://www.lalafo.kg"
@@ -102,8 +106,9 @@ def parse_coordinate(raw) -> float | None:
 class Complaints:
     """Жалобы жителей: в памяти и в файле JSON Lines. IP не сохраняется."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, per_minute: int = COMPLAINTS_PER_MINUTE):
         self.path = Path(path)
+        self.per_minute = per_minute
         self.items: deque[dict] = deque(maxlen=COMPLAINTS_KEEP)
         self.hits: dict[str, deque[float]] = {}
         self.lock = threading.Lock()
@@ -132,7 +137,7 @@ class Complaints:
         hits = self.hits.setdefault(ip, deque())
         while hits and hits[0] <= now - 60:
             hits.popleft()
-        if len(hits) >= COMPLAINTS_PER_MINUTE:
+        if len(hits) >= self.per_minute:
             self.rejected += 1
             return max(1, math.ceil(hits[0] + 60 - now))
         hits.append(now)
@@ -180,14 +185,18 @@ class Listings:
                 self.items.clear()
 
     def remember(self, found: dict) -> None:
+        """Запоминает проверенную квартиру. Вне района замеров — тоже, с пометкой
+        «вне зоны»: оператор видит, где жители ищут жильё, а данных о связи нет."""
         signal = found.get("signal") or {}
-        if not found.get("in_area") or signal.get("status") != "ok":
-            return
+        inside = bool(found.get("in_area")) and signal.get("status") == "ok"
         record = {
             "url": found["url"], "site": found.get("site"), "title": (found.get("title") or "")[:200],
-            "lat": round(found["lat"], 6), "lon": round(found["lon"], 6),
-            "cell_id": signal.get("cell_id"), "color": signal.get("color"), "quality": signal.get("quality"),
-            "median": signal.get("median"), "checked": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "lat": round(found["lat"], 6), "lon": round(found["lon"], 6), "in_area": inside,
+            "cell_id": signal.get("cell_id") if inside else None,
+            "color": signal.get("color") if inside else None,
+            "quality": signal.get("quality") if inside else "вне зоны",
+            "median": signal.get("median") if inside else None,
+            "checked": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         with self.lock:
             self.items.pop(record["url"], None)
@@ -207,6 +216,16 @@ class Measurements(Complaints):
     """Замеры силы связи жителями: точка, дБм и/или палочки, сеть."""
 
 
+def auto_color(ping_ms: float, effective: str | None) -> str:
+    """Цвет автозамера: оценка сети браузером и задержка. 4G и пинг до 150 мс — хорошо,
+    2G или пинг больше 400 мс — плохо, остальное — средне."""
+    if effective in ("slow-2g", "2g") or ping_ms > 400:
+        return "red"
+    if effective == "3g" or ping_ms > 150:
+        return "yellow"
+    return "green"
+
+
 def signal_color(rsrp: float | None, bars: int | None) -> str:
     """Цвет замера по тем же порогам, что сетка: ≥ −90 зелёный, < −105 красный.
     Без дБм — по палочкам: 3–4 зелёный, 2 жёлтый, 0–1 красный."""
@@ -217,6 +236,40 @@ def signal_color(rsrp: float | None, bars: int | None) -> str:
 
 class Reports(Complaints):
     """Отметки жителей «как ловит связь»: то же хранилище и тот же лимит, свой файл."""
+
+
+def _number_in(raw, low: float, high: float) -> float | None:
+    value = parse_coordinate(raw)
+    return value if value is not None and low <= value <= high else None
+
+
+def parse_manual(fields: dict) -> dict | None:
+    """Ручной замер: дБм с экрана телефона и/или палочки."""
+    raw_rsrp, bars, network = fields.get("rsrp_dbm"), fields.get("bars"), fields.get("network")
+    rsrp = None if raw_rsrp is None else _number_in(raw_rsrp, *RSRP_RANGE)
+    if raw_rsrp is not None and rsrp is None:
+        return None
+    if bars is not None and (not isinstance(bars, int) or isinstance(bars, bool) or not 0 <= bars <= MAX_BARS):
+        return None
+    if (rsrp is None and bars is None) or (network is not None and network not in NETWORKS):
+        return None
+    return {"rsrp_dbm": None if rsrp is None else round(rsrp, 1), "bars": bars, "network": network,
+            "color": signal_color(rsrp, bars)}
+
+
+def parse_auto(fields: dict) -> dict | None:
+    """Автозамер: задержка до сервера замера и то, что браузер сообщает о сети."""
+    ping = _number_in(fields.get("ping_ms"), 0, 20000)
+    effective, connection = fields.get("effective"), fields.get("connection") or "unknown"
+    rtt = None if fields.get("rtt_ms") is None else _number_in(fields.get("rtt_ms"), 0, 20000)
+    downlink = None if fields.get("downlink_mbps") is None else _number_in(fields.get("downlink_mbps"), 0, 10000)
+    if (ping is None or connection not in CONNECTIONS or (effective is not None and effective not in EFFECTIVE)
+            or (fields.get("rtt_ms") is not None and rtt is None)
+            or (fields.get("downlink_mbps") is not None and downlink is None)):
+        return None
+    return {"ping_ms": round(ping), "rtt_ms": None if rtt is None else round(rtt),
+            "downlink_mbps": None if downlink is None else round(downlink, 2),
+            "effective": effective, "connection": connection, "color": auto_color(ping, effective)}
 
 
 def create_app(
@@ -260,7 +313,7 @@ def create_app(
     app.state.complaints = Complaints(complaints_file)
     app.state.reports = Reports(reports_file)
     app.state.listings = Listings(listings_file)
-    app.state.measurements = Measurements(measurements_file)
+    app.state.measurements = Measurements(measurements_file, MEASUREMENTS_PER_MINUTE)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -450,15 +503,18 @@ def create_app(
             return fields
         lat, lon = parse_coordinate(fields.get("lat")), parse_coordinate(fields.get("lon"))
         accuracy = parse_coordinate(fields.get("accuracy_m"))
-        raw_rsrp, bars, network = fields.get("rsrp_dbm"), fields.get("bars"), fields.get("network")
-        rsrp = None if raw_rsrp is None else parse_coordinate(raw_rsrp)
-        bars_ok = bars is None or (isinstance(bars, int) and not isinstance(bars, bool) and 0 <= bars <= MAX_BARS)
-        if (lat is None or lon is None or accuracy is None or not 0 <= accuracy <= MAX_ACCURACY_M
-                or (raw_rsrp is not None and (rsrp is None or not RSRP_RANGE[0] <= rsrp <= RSRP_RANGE[1]))
-                or not bars_ok or (rsrp is None and bars is None)
-                or (network is not None and network not in NETWORKS)):
+        if lat is None or lon is None or accuracy is None or not 0 <= accuracy <= MAX_ACCURACY_M:
+            return error(400, "bad_request", "нужны lat, lon и accuracy_m от 0 до 5000")
+        method = fields.get("method", "manual")
+        if method == "auto":
+            values = parse_auto(fields)
+        elif method == "manual":
+            values = parse_manual(fields)
+        else:
+            values = None
+        if values is None:
             return error(400, "bad_request",
-                         "нужны lat, lon, accuracy_m и хотя бы одно: rsrp_dbm от −140 до −44 или bars от 0 до 4")
+                         "ручной замер: rsrp_dbm от −140 до −44 или bars 0–4; автозамер: ping_ms и данные сети")
         if not in_city(lat, lon):
             return error(422, "out_of_city", "точка вне Бишкека")
         wait = app.state.measurements.allow(client_ip(request))
@@ -466,9 +522,7 @@ def create_app(
             return error(429, "rate_limited", "слишком много замеров, попробуйте позже", **{"Retry-After": str(wait)})
         found = index.lookup(lat, lon)
         cell_id = found.get("cell_id") if found else None
-        return app.state.measurements.add(
-            lat, lon, cell_id, "app", None, accuracy_m=round(accuracy), rsrp_dbm=None if rsrp is None else round(rsrp, 1),
-            bars=bars, network=network, color=signal_color(rsrp, bars))
+        return app.state.measurements.add(lat, lon, cell_id, "app", None, accuracy_m=round(accuracy), method=method, **values)
 
     @app.get("/api/measurements")
     async def measurements(after: int = 0):

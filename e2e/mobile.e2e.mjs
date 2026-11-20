@@ -26,13 +26,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const IN_AREA = { lat: 42.8687, lon: 74.604 };     // X017_Y015, средняя связь
 const WEAK = { lat: 42.8618, lon: 74.5728 };       // X005_Y012, слабая связь
 const OUTSIDE = { lat: 42.83, lon: 74.62 };
+const AUTO_POINT = { lat: 42.8530, lon: 74.5850 };  // своя точка: автозамер не попадает под «уже отправлен здесь»
 const FLATS = [
   { url: "https://www.house.kg/details/e2e-good-1", site: "house.kg", title: "2-комн. кв., Мед. академия (тест)",
-    lat: 42.8416, lon: 74.6041, cell_id: "X017_Y000", color: "green", quality: "хорошая", median: -89.35, checked: "2026-11-21T00:00:00+00:00" },
+    lat: 42.8416, lon: 74.6041, cell_id: "X017_Y000", color: "green", quality: "хорошая", median: -89.35, in_area: true, checked: "2026-11-21T00:00:00+00:00" },
   { url: "https://www.house.kg/details/e2e-mid-2", site: "house.kg", title: "3-комн. кв., Раззакова (тест)",
-    lat: 42.8687, lon: 74.604, cell_id: "X017_Y015", color: "yellow", quality: "средняя", median: -98.3, checked: "2026-11-21T00:00:00+00:00" },
+    lat: 42.8687, lon: 74.604, cell_id: "X017_Y015", color: "yellow", quality: "средняя", median: -98.3, in_area: true, checked: "2026-11-21T00:00:00+00:00" },
   { url: "https://lalafo.kg/bishkek/ads/e2e-weak-id-3", site: "lalafo.kg", title: "1-комн. кв., Ахунбаева (тест)",
-    lat: 42.8618, lon: 74.5728, cell_id: "X005_Y012", color: "red", quality: "слабая", median: -116.8, checked: "2026-11-21T00:00:00+00:00" },
+    lat: 42.8618, lon: 74.5728, cell_id: "X005_Y012", color: "red", quality: "слабая", median: -116.8, in_area: true, checked: "2026-11-21T00:00:00+00:00" },
 ];
 
 function freePort() {
@@ -118,6 +119,8 @@ class Page {
     await this.send("Emulation.setUserAgentOverride", {
       userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0 Mobile Safari/537.36" });
     if (geo) await this.geo(geo);
+    // Тест не зависит от внешнего интернета: замер задержки идёт через запасной /health.
+    await this.send("Network.setBlockedURLs", { urls: ["*speed.cloudflare.com*"] });
     return this;
   }
   geo({ lat, lon, accuracy = 12 }) {
@@ -250,9 +253,11 @@ describe("мобильная версия /app/", () => {
     const m = await waitFor(async () => (await api("/api/measurements")).measurements.find(x => x.bars === 1 && !x.cell_id), "замер на сервере");
     assert.equal(m.rsrp_dbm, null);
     assert.equal(m.color, "red");
-    // Тот же экран после обновления показывает замер жителей.
+    // Здесь два замера: автоматический (место определилось) и ручной «1 палочка».
+    // При равенстве цветов итог — худший, то есть слабый.
+    await waitFor(async () => (await api("/api/measurements")).measurements.filter(x => !x.cell_id && Math.abs(x.lat - OUTSIDE.lat) < 1e-6).length === 2, "автозамер и ручной замер");
     await page.click("#refresh");
-    await waitFor(async () => /Замеры жителей: слабый сигнал \(1\)/.test(await page.text("#quality")), "«Замеры жителей: слабый сигнал (1)»");
+    await waitFor(async () => /Замеры жителей: слабый сигнал \(2\)/.test(await page.text("#quality")), "«Замеры жителей: слабый сигнал (2)»");
     await page.shot("06-outside-measure");
     assert.deepEqual(page.errors, []);
     await page.close();
@@ -288,6 +293,54 @@ describe("мобильная версия /app/", () => {
     await panel.shot("08-operator-measure");
     assert.deepEqual(panel.errors, []);
     await panel.close();
+  });
+
+  test("автозамер: место определилось — замер сам ушёл оператору", async () => {
+    const page = await (await browser.page(base)).setup({ geo: AUTO_POINT });
+    await page.open(base + "/app/");
+    await page.click(`nav button[data-s="here"]`);
+    const m = await waitFor(async () => (await api("/api/measurements")).measurements
+      .find(x => x.method === "auto" && Math.abs(x.lat - AUTO_POINT.lat) < 1e-6), "автозамер на сервере");
+    assert.ok(m.ping_ms >= 0 && ["green", "yellow", "red"].includes(m.color));
+    assert.ok(m.cell_id, "точка в районе замеров — у автозамера есть квадрат");
+    await waitFor(async () => /Отправлено оператору/.test(await page.text("#a-hint")), "подсказка «Отправлено оператору»");
+    assert.match(await page.text("#a-verdict"), /связь/i);
+    assert.equal(await page.eval(`document.querySelector("#measure").open`), false, "ручной ввод свёрнут");
+    await page.shot("09-auto");
+    // Повторно в том же месте не шлём.
+    const count = (await api("/api/measurements")).measurements.length;
+    await page.click("#refresh");
+    await waitFor(async () => /уже отправлен/.test(await page.text("#a-hint")), "«замер уже отправлен»");
+    assert.equal((await api("/api/measurements")).measurements.length, count);
+    assert.deepEqual(page.errors, []);
+    await page.close();
+
+    const panel = await (await browser.page(base)).setup({ width: 1400, height: 900 });
+    await panel.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+    await panel.open(base + "/#speed");
+    await waitFor(async () => /авто/.test(await panel.text("#s-table")), "автозамер в таблице оператора");
+    await panel.open(base + "/#flats");
+    await waitFor(async () => (await panel.eval(`document.querySelectorAll("#f-table tr").length`)) === FLATS.length + 1, "квартиры у оператора");
+    assert.match(await panel.text("#f-table"), /Плохой интернет/);
+    assert.match(await panel.text("#f-table"), /Хорошая связь/);
+    await panel.shot("10-operator-flats");
+    assert.deepEqual(panel.errors, []);
+    await panel.close();
+  });
+
+  test("неточное место (по IP): чужой квадрат не показывается, замер не отправляется", async () => {
+    const coarse = { lat: 42.8700, lon: 74.5900, accuracy: 249340 };
+    const page = await (await browser.page(base)).setup({ geo: coarse });
+    const before = (await api("/api/measurements")).measurements.length;
+    await page.open(base + "/app/");
+    await page.click(`nav button[data-s="here"]`);
+    await waitFor(async () => /неточно/.test(await page.text("#quality")), "«Место определено неточно»");
+    assert.equal(await page.text("#value"), "—");
+    assert.equal(await page.text("#cell"), "—");
+    assert.equal(await page.text("#gps"), "±249 км");
+    await waitFor(async () => /не отправлен/.test(await page.text("#a-hint")), "«замер не отправлен»");
+    assert.equal((await api("/api/measurements")).measurements.length, before);
+    await page.close();
   });
 
   test("жалоба «Здесь нет связи» доходит до сервера", async () => {
