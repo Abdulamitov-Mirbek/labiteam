@@ -36,7 +36,7 @@ body.mapmode main{padding:0;overflow:hidden;position:relative}
 .mtools button{pointer-events:auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 12px;font:600 13px Inter,system-ui,sans-serif;box-shadow:0 2px 8px rgba(15,23,42,.12);min-height:36px;cursor:pointer}
 .mtools button[aria-pressed="false"]{color:var(--muted);box-shadow:none;background:#f9fafb}
 .mtools button i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-.locbtn{position:absolute;z-index:500;right:12px;bottom:calc(34% + 12px);width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);box-shadow:0 2px 8px rgba(15,23,42,.15);display:grid;place-items:center;cursor:pointer}
+.locbtn{position:absolute;z-index:500;right:12px;bottom:calc(var(--sheet-h,34%) + 12px);width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);box-shadow:0 2px 8px rgba(15,23,42,.15);display:grid;place-items:center;cursor:pointer}
 .sheet{position:absolute;z-index:600;left:0;right:0;bottom:0;background:var(--card);border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(15,23,42,.12);height:34%;display:flex;flex-direction:column;transition:height .25s}
 .sheet.open{height:72%}
 .sheet .grab{border:0;background:none;width:100%;padding:8px 16px 4px;cursor:pointer;text-align:left;font:inherit;color:inherit}
@@ -57,6 +57,8 @@ body.mapmode main{padding:0;overflow:hidden;position:relative}
 .me{width:16px!important;height:16px!important;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.2)}
 .pop b{display:block;font-size:14px;margin-bottom:4px}.pop .q{font-weight:600}.pop a{display:inline-block;margin-top:6px;color:var(--blue);font-weight:600}
 .leaflet-container{font-family:Inter,system-ui,sans-serif}
+/* Подпись карты и кнопка «Где я» — над нижней панелью при любой её высоте. */
+#amap .leaflet-bottom{bottom:var(--sheet-h,34%)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
 .pad{padding:14px 16px}
 .gauge{padding:22px 16px 18px;text-align:center}
@@ -349,6 +351,9 @@ function drawFlats(list) {
   }
 }
 
+// Высота нижней панели → CSS-переменная: по ней встают подпись карты и кнопка «Где я».
+const syncSheet = () => $("s-map").style.setProperty("--sheet-h", $("sheet").offsetHeight + "px");
+new ResizeObserver(syncSheet).observe($("sheet"));
 $("grab").addEventListener("click", () => {
   const sheet = $("sheet");
   if (sheet.classList.contains("min")) sheet.classList.remove("min");

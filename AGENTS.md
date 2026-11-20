@@ -12,6 +12,7 @@ python -m venv .venv                                  # один раз, есл�
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q               # должно быть: 133 passed
 node --test "extension/tests/*.test.js"               # должно быть: pass 9, fail 0
+node --test e2e/mobile.e2e.mjs                         # мобильная версия в Chrome: pass 12, fail 0
 ```
 
 На macOS/Linux: `.venv/bin/python` вместо `.\.venv\Scripts\python.exe`.
@@ -22,6 +23,10 @@ node --test "extension/tests/*.test.js"               # должно быть: p
 - **В `requirements.txt` появился `httpx`** — после `git pull` переустановите зависимости.
 - **Плагин поменялся** — в `chrome://extensions` нажмите ↻ у «Сигнал.kg», иначе Chrome работает
   со старым кодом.
+- **Автотест мобильной версии** (`e2e/mobile.e2e.mjs`) сам поднимает сервер на свободном порту с
+  временными данными и открывает `/app/` в Chrome без окна с экраном телефона: карта и квартиры,
+  GPS, жалоба, очередь без сети, демо, установка, ширина 360/390/430 px, ошибки в консоли.
+  Нужен Chrome (путь — переменная `CHROME`, если не найден сам). Скриншоты: `E2E_SHOTS=<папка>`.
 - Если тесты красные до ваших изменений — сначала разберитесь с этим, не пишите код поверх.
 
 ## 2. Как запускать

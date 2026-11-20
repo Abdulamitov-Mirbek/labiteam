@@ -189,6 +189,7 @@ cloudflared tunnel --url http://127.0.0.1:8000    # выдаст https://….try
 pip install -r requirements-dev.txt
 pytest                                   # ядро и API: 118 тестов
 node --test extension/tests/*.test.js    # плагин: извлечение координат и текст плашки
+node --test e2e/mobile.e2e.mjs           # мобильная версия в настоящем Chrome: 12 сценариев
 ```
 
 ## 7. Сценарий демо (3 минуты)
