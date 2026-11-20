@@ -128,8 +128,13 @@ def test_complaint_too_large_413(client):
     assert client.post("/api/complaints", content=body).status_code == 413
 
 
-def test_complaint_out_of_area_422(client):
-    assert client.post("/api/complaints", json={"lat": 42.8, "lon": 74.6}).status_code == 422
+def test_complaint_outside_city_422(client):
+    assert client.post("/api/complaints", json={"lat": 42.5, "lon": 74.6}).status_code == 422
+
+
+def test_complaint_accepted_outside_measured_area(client):
+    r = client.post("/api/complaints", json={"lat": 42.80, "lon": 74.60})  # Бишкек, но без замеров
+    assert r.status_code == 201 and r.json()["cell_id"] is None
 
 
 def test_complaint_rate_limit_per_ip(client):
@@ -216,7 +221,7 @@ def test_report_bad_fields_400(client, body):
 
 
 def test_report_out_of_area_and_limit(client):
-    assert client.post("/api/reports", json={"lat": 42.8, "lon": 74.6, "level": "ok"}).status_code == 422
+    assert client.post("/api/reports", json={"lat": 42.5, "lon": 74.6, "level": "ok"}).status_code == 422
     for _ in range(server_app.COMPLAINTS_PER_MINUTE):
         assert client.post("/api/reports", json={**HOUSE, "level": "ok"}).status_code == 201
     r = client.post("/api/reports", json={**HOUSE, "level": "ok"})
@@ -238,3 +243,42 @@ def test_app_serves_leaflet_and_has_map_screen(client):
     assert client.get("/app/leaflet.css").headers["content-type"].startswith("text/css")
     page = client.get("/app/").text
     assert 'id="s-map"' in page and '<script src="/app/leaflet.js"></script>' in page
+
+
+# --- вне района замеров: оценка жителей рядом ------------------------------------
+
+OUTSIDE = {"lat": 42.8100, "lon": 74.6300}  # Бишкек, но вне района замеров
+
+
+def test_report_accepted_outside_measured_area(client):
+    r = client.post("/api/reports", json={**OUTSIDE, "level": "bad"})
+    assert r.status_code == 201 and r.json()["cell_id"] is None
+
+
+def test_crowd_without_reports(client):
+    body = client.get("/api/crowd", params=OUTSIDE).json()
+    assert body == {"radius_m": 300, "reports": 0, "levels": {"good": 0, "ok": 0, "bad": 0, "none": 0},
+                    "verdict": None, "color": None, "complaints": 0, "in_area": False}
+
+
+def test_crowd_counts_only_nearby_and_takes_majority(client):
+    near = {"lat": OUTSIDE["lat"] + 0.001, "lon": OUTSIDE["lon"]}  # ~110 м
+    far = {"lat": OUTSIDE["lat"] + 0.01, "lon": OUTSIDE["lon"]}    # ~1,1 км
+    for level in ("bad", "bad", "good"):
+        client.post("/api/reports", json={**near, "level": level})
+    client.post("/api/reports", json={**far, "level": "good"})
+    client.post("/api/complaints", json=near)
+    body = client.get("/api/crowd", params=OUTSIDE).json()
+    assert body["reports"] == 3 and body["levels"]["bad"] == 2
+    assert body["verdict"] == "bad" and body["color"] == "red" and body["complaints"] == 1
+
+
+def test_crowd_tie_takes_worse(client):
+    client.post("/api/reports", json={**OUTSIDE, "level": "good"})
+    client.post("/api/reports", json={**OUTSIDE, "level": "ok"})
+    assert client.get("/api/crowd", params=OUTSIDE).json()["verdict"] == "ok"
+
+
+@pytest.mark.parametrize("params, code", [({"lat": "x", "lon": "74.6"}, 400), ({"lat": 42.5, "lon": 74.6}, 422)])
+def test_crowd_bad_input(client, params, code):
+    assert client.get("/api/crowd", params=params).status_code == code

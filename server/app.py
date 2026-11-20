@@ -9,6 +9,7 @@ GET  /api/result           result.json
 POST /api/complaints       жалоба «Здесь нет связи» {lat, lon, source, site}
 POST /api/reports          отметка жителя «как ловит связь» {lat, lon, level, network, source, site}
 GET  /api/reports          отметки с id больше after и число отклонённых лимитом
+GET  /api/crowd?lat=&lon=  оценка жителей в радиусе 300 м — там, где нет замеров оператора
 GET  /api/complaints       жалобы с id больше after и число отклонённых лимитом
 
 Настройки (переменные окружения):
@@ -32,10 +33,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 
 from covermap.pipeline import Report, build
 from covermap.render import render
+from covermap.geo import haversine
 from covermap.signal import SignalIndex
 
 from .listing import (
-    FetchError, HttpFetcher, RateLimit, TtlCache, extract_coords, extract_title, find_listing_url, site_of,
+    BISHKEK, FetchError, HttpFetcher, RateLimit, TtlCache, extract_coords, extract_title, find_listing_url, site_of,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +56,7 @@ APP_FILES = {
     "leaflet.css": (VENDOR / "leaflet.css", "text/css"),
 }
 LISTINGS_KEEP = 500
+CROWD_RADIUS_M = 300  # отметки жителей в этом радиусе — «оценка жителей рядом»
 DEFAULT_ORIGINS = "https://house.kg,https://www.house.kg,https://lalafo.kg,https://www.lalafo.kg"
 SOURCES = {"plugin", "panel", "app"}
 SITES = {"house.kg", "lalafo.kg"}
@@ -68,6 +71,13 @@ LISTINGS_PER_MINUTE = 20       # проверок объявлений с одн
 
 def error(status: int, code: str, detail: str, **headers) -> JSONResponse:
     return JSONResponse({"error": code, "detail": detail}, status_code=status, headers=headers or None)
+
+
+def in_city(lat: float, lon: float) -> bool:
+    """Точка в Бишкеке. Жалобы и отметки жителей принимаются по всему городу,
+    а не только в районе замеров: вне района это единственные данные о связи."""
+    lat_min, lat_max, lon_min, lon_max = BISHKEK
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
 
 
 def parse_coordinate(raw) -> float | None:
@@ -367,8 +377,8 @@ def create_app(
         site = fields.get("site")
         if lat is None or lon is None or source not in SOURCES or (site is not None and site not in SITES):
             return error(400, "bad_request", "нужны числа lat, lon, source: plugin или panel, site: house.kg, lalafo.kg или null")
-        if not report.bounds.contains(lat, lon):
-            return error(422, "out_of_area", "точка вне района замеров")
+        if not in_city(lat, lon):
+            return error(422, "out_of_city", "точка вне Бишкека")
         wait = app.state.complaints.allow(client_ip(request))
         if wait:
             return error(429, "rate_limited", "слишком много жалоб, попробуйте позже",
@@ -395,8 +405,8 @@ def create_app(
                 or (site is not None and site not in SITES)):
             return error(400, "bad_request",
                          "нужны числа lat, lon; level: good, ok, bad или none; network: 2G–5G или null")
-        if not report.bounds.contains(lat, lon):
-            return error(422, "out_of_area", "точка вне района замеров")
+        if not in_city(lat, lon):
+            return error(422, "out_of_city", "точка вне Бишкека")
         wait = app.state.reports.allow(client_ip(request))
         if wait:
             return error(429, "rate_limited", "слишком много отметок, попробуйте позже",
@@ -404,6 +414,36 @@ def create_app(
         found = index.lookup(lat, lon)
         cell_id = found.get("cell_id") if found else None
         return app.state.reports.add(lat, lon, cell_id, source, site, level=level, network=network)
+
+    @app.get("/api/crowd")
+    async def crowd(lat: str = "", lon: str = ""):
+        """Оценка жителей рядом с точкой: отметки «как ловит связь» и жалобы в радиусе 300 м.
+
+        Нужна там, где нет замеров оператора: плагин и приложение показывают её вместо медианы.
+        """
+        lat_value, lon_value = parse_coordinate(lat), parse_coordinate(lon)
+        if lat_value is None or lon_value is None:
+            return error(400, "bad_request", "lat и lon должны быть числами")
+        if not in_city(lat_value, lon_value):
+            return error(422, "out_of_city", "точка вне Бишкека")
+        near = lambda item: haversine(lat_value, lon_value, item["lat"], item["lon"]) <= CROWD_RADIUS_M
+        levels = {key: 0 for key in LEVELS}
+        for item in app.state.reports.items:
+            if item.get("level") in levels and near(item):
+                levels[item["level"]] += 1
+        total = sum(levels.values())
+        # Итог — самая частая оценка; при равенстве берём худшую, чтобы не приукрашивать.
+        order = ["none", "bad", "ok", "good"]
+        verdict = max(order, key=lambda key: (levels[key], -order.index(key))) if total else None
+        return {
+            "radius_m": CROWD_RADIUS_M,
+            "reports": total,
+            "levels": levels,
+            "verdict": verdict,
+            "color": LEVELS[verdict] if verdict else None,
+            "complaints": sum(1 for item in app.state.complaints.items if near(item)),
+            "in_area": report.bounds.contains(lat_value, lon_value),
+        }
 
     @app.get("/api/reports")
     async def reports(after: int = 0):

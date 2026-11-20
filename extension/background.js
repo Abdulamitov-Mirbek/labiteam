@@ -43,6 +43,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+  if (message.type === "crowd") {
+    const query = new URLSearchParams({ lat: message.lat, lon: message.lon });
+    call("/api/crowd?" + query).then(sendResponse);
+    return true;
+  }
   if (message.type === "report") {
     const levels = ["good", "ok", "bad", "none"], networks = ["2G", "3G", "4G", "5G"];
     if (!levels.includes(message.level) || (message.network !== null && !networks.includes(message.network))) return false;
