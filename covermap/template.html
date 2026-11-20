@@ -172,7 +172,7 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
         <div><i class="sq" style="background:var(--deep)"></i>Слабый, закроет новая БС</div>
         <div><i class="sq" style="background:var(--orange);border-radius:50%"></i>Жалоба жителя</div>
         <div><i class="sq" style="background:#fff;border:3px solid var(--red);border-radius:50%;width:12px;height:12px"></i>Сигнал жителя (цвет — оценка)</div>
-        <div><i class="sq" style="background:var(--green);border-radius:6px;width:22px"></i>Замер скорости, Мбит/с</div>
+        <div><i class="sq" style="background:var(--yellow);border-radius:6px;width:22px"></i>Замер жителя, дБм</div>
       </div>
       <a class="float cta btn primary" href="#complaints" style="border:0">Жалобы жителей: <span id="m-ccount" style="margin-left:4px">0</span>&nbsp;→</a>
     </div>
@@ -222,21 +222,21 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
 </div></section>
 
 <section class="view" id="v-speed"><div class="page">
-  <div class="row"><div><h1>Замеры скорости от жителей</h1><div class="sub">Житель нажал «Замерить скорость» в приложении — скорость интернета вместе с его точкой приходит сюда.</div></div>
+  <div class="row"><div><h1>Замеры силы связи от жителей</h1><div class="sub">Житель указал в приложении, какой сигнал видит на телефоне, — палочки или дБм вместе с его точкой GPS.</div></div>
   <a class="btn primary" href="#map">Показать на карте</a></div>
   <div class="stats" id="s-stats"></div>
   <div class="two">
     <div class="card" style="overflow:hidden">
-      <div class="row pad"><h2>Последние замеры</h2><div class="seg" id="s-filter" style="width:360px;max-width:100%"><button data-f="all" class="on">Все</button><button data-f="slow">Медленно</button><button data-f="outside">Вне района</button></div></div>
+      <div class="row pad"><h2>Последние замеры</h2><div class="seg" id="s-filter" style="width:360px;max-width:100%"><button data-f="all" class="on">Все</button><button data-f="worse">Хуже карты</button><button data-f="outside">Вне района</button></div></div>
       <div class="scroll"><table id="s-table"></table></div>
       <div class="empty" id="s-empty"></div>
     </div>
     <div>
       <div class="card pad"><h2>Как читать</h2><ol>
-        <li>Скорость меряется в приложении жителя через speed.cloudflare.com — это интернет его телефона.</li>
-        <li>Цвет: зелёный — от 20 Мбит/с, жёлтый — 5–20, красный — меньше 5.</li>
-        <li>«Вне района» — точки, где у оператора нет замеров сигнала: там это единственные данные.</li>
-        <li>Хранятся время, точка с точностью GPS, скорость, пинг и тип сети — без персональных данных.</li></ol></div>
+        <li>дБм — уровень сигнала с экрана телефона жителя (Android: «Состояние SIM-карты»). Та же шкала, что RSRP в замерах оператора.</li>
+        <li>Если дБм нет — палочки: 3–4 хорошо, 2 средне, 0–1 слабо.</li>
+        <li>«Хуже карты» — житель видит сигнал слабее, чем медиана квадрата: квадрат стоит перемерить.</li>
+        <li>«Вне района» — там, где у оператора нет замеров: это единственные данные.</li></ol></div>
       <div class="darkcard" style="margin-top:12px" id="s-hot"></div>
     </div>
   </div>
@@ -480,7 +480,7 @@ function sites() {
 const LAYERS = [["heat", "Тепловая карта слабого сигнала", "#f87171"], ["worst", "Топ-3 худших квадрата", "#3b0d14"],
   ["towers", "Существующие БС", "#2563eb"], ["zone", "Запретная зона 500 м", "#6b7280"],
   ["cands", "Площадки-кандидаты", "#4338ca"], ["radius", "Радиус 1 км выбранных площадок", "#a5b4fc"],
-  ["complaints", "Жалобы жителей", "#ea580c"], ["reports", "Сигналы жителей", "#d93636"], ["speed", "Замеры скорости", "#1f9d55"]];
+  ["complaints", "Жалобы жителей", "#ea580c"], ["reports", "Сигналы жителей", "#d93636"], ["speed", "Замеры жителей (дБм)", "#1f9d55"]];
 $("m-layers").innerHTML = LAYERS.map(([k, l, c]) =>
   `<label><input type="checkbox" id="ly-${k}" ${state.layers[k] ? "checked" : ""}><i class="dot" style="background:${c};margin:0"></i>${l}</label>`).join("");
 LAYERS.forEach(([k]) => $("ly-" + k).addEventListener("change", e => { state.layers[k] = e.target.checked; draw(); }));
@@ -651,48 +651,65 @@ if (DATA.live) {
   pollReports();
 }
 
-/* --- замеры скорости из приложения жителей --- */
-const speedColor = d => d >= 20 ? HEX.green : d >= 5 ? HEX.yellow : HEX.red;
-const CONN = { cellular: "мобильная", wifi: "Wi-Fi", ethernet: "кабель", other: "другая", unknown: "—" };
+/* --- замеры силы связи от жителей --- */
+const RANK = { green: 2, yellow: 1, red: 0 };
+const BARS = n => "▂▄▆█".slice(0, n) + "·".repeat(4 - n);
 const tests = [];
 let testsRejected = 0, speedFilter = "all";
 const med = list => { const a = [...list].sort((x, y) => x - y), m = a.length >> 1; return a.length ? (a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2) : null; };
-const n1 = v => v == null ? "—" : Number(v).toFixed(1);
+const strength = t => t.rsrp_dbm != null ? `${fmt(Math.round(t.rsrp_dbm))} дБм` : `${t.bars} из 4`;
+// Сравнение с картой: -1 житель видит хуже медианы квадрата, 0 так же, 1 лучше, null — нет замеров.
+function vsMap(t) {
+  const m = medianOf[t.cell_id];
+  return m === undefined ? null : Math.sign(RANK[t.color] - RANK[color(m)]);
+}
 function renderSpeed() {
-  const slow = tests.filter(t => t.down_mbps < 5), outside = tests.filter(t => !t.cell_id);
-  const mDown = med(tests.map(t => t.down_mbps)), mPing = med(tests.map(t => t.ping_ms));
-  $("s-stats").innerHTML = [["Получено", tests.length, "замеров с момента запуска", ""],
-    ["Медиана скачивания", mDown == null ? "—" : n1(mDown), "Мбит/с", mDown != null ? `color:${speedColor(mDown)}` : ""],
-    ["Медиана пинга", mPing == null ? "—" : Math.round(mPing), "мс", ""],
-    ["Медленно (< 5 Мбит/с)", slow.length, `вне района замеров: ${outside.length}`, slow.length ? "color:var(--red)" : ""]]
+  const worse = tests.filter(t => vsMap(t) === -1), outside = tests.filter(t => !t.cell_id);
+  const withDbm = tests.filter(t => t.rsrp_dbm != null), mDbm = med(withDbm.map(t => t.rsrp_dbm));
+  const weak = tests.filter(t => t.color === "red");
+  $("s-stats").innerHTML = [["Получено", tests.length, `с дБм: ${withDbm.length}, только палочки: ${tests.length - withDbm.length}`, ""],
+    ["Медиана жителей", mDbm == null ? "—" : fmt(Math.round(mDbm)), "дБм", mDbm != null ? `color:${HEX[color(mDbm)]}` : ""],
+    ["Слабая связь", weak.length, "< −105 дБм или 0–1 палочка", weak.length ? "color:var(--red)" : ""],
+    ["Хуже, чем на карте", worse.length, `вне района замеров: ${outside.length}`, worse.length ? "color:var(--red)" : ""]]
     .map(([l, n, s, st]) => `<div class="card pad stat"><div class="label" style="margin:0 0 4px">${l}</div><b style="${st}">${n}</b><small>${s}</small></div>`).join("");
-  const list = (speedFilter === "slow" ? slow : speedFilter === "outside" ? outside : tests).slice().reverse().slice(0, 50);
-  $("s-table").innerHTML = list.length ? `<tr><th>Время</th><th>Квадрат</th><th class="num">↓ Мбит/с</th><th class="num">↑ Мбит/с</th><th class="num">Пинг</th><th>Сеть</th><th class="num">GPS</th></tr>` +
-    list.map(t => `<tr><td class="mono">${esc(new Date(t.ts).toLocaleTimeString("ru-RU"))}</td>
+  const list = (speedFilter === "worse" ? worse : speedFilter === "outside" ? outside : tests).slice().reverse().slice(0, 50);
+  $("s-table").innerHTML = list.length ? `<tr><th>Время</th><th>Квадрат</th><th class="num">Житель</th><th class="num">Карта</th><th>Сравнение</th><th>Сеть</th><th class="num">GPS</th></tr>` +
+    list.map(t => {
+      const m = medianOf[t.cell_id], v = vsMap(t);
+      return `<tr><td class="mono">${esc(new Date(t.ts).toLocaleTimeString("ru-RU"))}</td>
       <td class="mono">${t.cell_id ? esc(t.cell_id) : `<span class="pill p-gry">вне района</span>`}</td>
-      <td class="num"><i class="dot" style="background:${speedColor(t.down_mbps)}"></i><b>${n1(t.down_mbps)}</b></td>
-      <td class="num">${n1(t.up_mbps)}</td><td class="num">${Math.round(t.ping_ms)} мс</td>
-      <td>${esc(CONN[t.connection] || "—")}${t.effective ? ` <span class="pill p-gry">${esc(t.effective)}</span>` : ""}${t.server === "signalkg" ? ` <span class="pill p-yel" title="замер через сервер Сигнал.kg">наш сервер</span>` : ""}</td>
-      <td class="num">±${Math.round(t.accuracy_m)} м</td></tr>`).join("") : "";
+      <td class="num"><i class="dot" style="background:${HEX[t.color]}"></i><b>${esc(strength(t))}</b>${t.rsrp_dbm != null && t.bars != null ? ` <span class="pill p-gry">${t.bars}/4</span>` : ""}</td>
+      <td class="num">${m === undefined ? "—" : `<i class="dot" style="background:${HEX[color(m)]}"></i>${fmt(m)}`}</td>
+      <td>${v === null ? `<span class="pill p-gry">Нет замеров</span>` : `<span class="pill ${VERSUS[v][1]}">${VERSUS[v][0]}</span>`}</td>
+      <td>${t.network ? `<span class="pill p-gry">${esc(t.network)}</span>` : "—"}</td>
+      <td class="num">±${Math.round(t.accuracy_m)} м</td></tr>`;
+    }).join("") : "";
   $("s-empty").textContent = list.length ? "" : DATA.live
-    ? "Замеров пока нет. В приложении жителя на экране «Связь здесь» нажмите «Замерить скорость»."
+    ? "Замеров пока нет. В приложении жителя на экране «Связь здесь» укажите палочки или дБм и нажмите «Отправить замер»."
     : "Замеры видны, когда панель открыта через сервер: python -m server.";
   $("s-empty").style.display = list.length ? "none" : "block";
-  const worst = slow.slice().sort((a, b) => a.down_mbps - b.down_mbps)[0];
-  $("s-hot").innerHTML = worst
-    ? `<h2>Самый медленный замер: ${n1(worst.down_mbps)} Мбит/с</h2><p>${worst.cell_id ? `Квадрат ${esc(worst.cell_id)}, медиана сигнала ${medianOf[worst.cell_id] !== undefined ? fmt(medianOf[worst.cell_id]) + " дБм" : "—"}.` : "Вне района замеров — у оператора здесь нет данных о сигнале."} Пинг ${Math.round(worst.ping_ms)} мс.</p>
+  const counts = {};
+  worse.forEach(t => counts[t.cell_id] = (counts[t.cell_id] || 0) + 1);
+  const hot = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  $("s-hot").innerHTML = hot
+    ? `<h2>Перемерить ${esc(hot[0])}</h2><p>Жители видят здесь сигнал слабее, чем медиана карты (${fmt(medianOf[hot[0]])} дБм): замеров «хуже карты» — ${hot[1]}.</p>
        <button class="btn primary" style="width:100%" id="s-goto">Открыть на карте</button>`
-    : `<h2>Медленных замеров пока нет</h2><p>Здесь появится место, где у жителей самый медленный интернет.</p>`;
-  $("s-goto")?.addEventListener("click", () => { location.hash = "#map"; setTimeout(() => map.flyTo([worst.lat, worst.lon], 16, { duration: .8 }), 50); });
+    : `<h2>Расхождений с картой пока нет</h2><p>Здесь появится квадрат, где жители видят сигнал слабее, чем показывают замеры оператора.</p>`;
+  $("s-goto")?.addEventListener("click", () => {
+    const cell = DATA.grids.all.find(c => c.id === hot[0]);
+    location.hash = "#map";
+    setTimeout(() => map.flyToBounds(cell.corners, { maxZoom: 17, duration: .8 }), 50);
+  });
 }
 segment("s-filter", "f", f => { speedFilter = f; renderSpeed(); });
 function addSpeed(t, fresh) {
+  if (!HEX[t.color]) return;
   tests.push(t);
-  const color = speedColor(t.down_mbps);
-  const marker = L.marker([t.lat, t.lon], { icon: L.divIcon({ className: "spd" + (fresh ? " new" : ""), html: `<span>${esc(n1(t.down_mbps))}</span>`, iconSize: [0, 0] }) })
-    .bindTooltip(tip(`Замер жителя: ↓ ${n1(t.down_mbps)} · ↑ ${n1(t.up_mbps)} Мбит/с · пинг ${Math.round(t.ping_ms)} мс · ${CONN[t.connection] || ""} · ${new Date(t.ts).toLocaleTimeString("ru-RU")}`))
+  const label = t.rsrp_dbm != null ? fmt(Math.round(t.rsrp_dbm)) : BARS(t.bars);
+  const marker = L.marker([t.lat, t.lon], { icon: L.divIcon({ className: "spd" + (fresh ? " new" : ""), html: `<span>${esc(label)}</span>`, iconSize: [0, 0] }) })
+    .bindTooltip(tip(`Замер жителя: ${strength(t)}${t.bars != null && t.rsrp_dbm != null ? `, ${t.bars} из 4 палочек` : ""}${t.network ? " · " + t.network : ""} · ±${Math.round(t.accuracy_m)} м · ${new Date(t.ts).toLocaleTimeString("ru-RU")}`))
     .addTo(layer.speed);
-  const paint = () => marker.getElement()?.style.setProperty("--c", color);
+  const paint = () => marker.getElement()?.style.setProperty("--c", HEX[t.color]);
   paint();
   marker.on("add", paint);
 }
@@ -701,11 +718,11 @@ if (DATA.live) {
   let lastTest = 0, firstTest = true;
   const pollSpeed = async () => {
     try {
-      const res = await fetch("api/speedtests?after=" + lastTest, { cache: "no-store" });
+      const res = await fetch("api/measurements?after=" + lastTest, { cache: "no-store" });
       if (res.ok) {
         const body = await res.json();
-        for (const t of body.speedtests) { addSpeed(t, !firstTest); lastTest = Math.max(lastTest, t.id); }
-        if (body.speedtests.length && !firstTest) map.panTo([body.speedtests.at(-1).lat, body.speedtests.at(-1).lon]);
+        for (const t of body.measurements) { addSpeed(t, !firstTest); lastTest = Math.max(lastTest, t.id); }
+        if (body.measurements.length && !firstTest) map.panTo([body.measurements.at(-1).lat, body.measurements.at(-1).lon]);
         testsRejected = body.rejected || 0;
         firstTest = false;
         renderSpeed();

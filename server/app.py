@@ -10,8 +10,8 @@ POST /api/complaints       жалоба «Здесь нет связи» {lat, l
 POST /api/reports          отметка жителя «как ловит связь» {lat, lon, level, network, source, site}
 GET  /api/reports          отметки с id больше after и число отклонённых лимитом
 GET  /api/crowd?lat=&lon=  оценка жителей в радиусе 300 м — там, где нет замеров оператора
-POST /api/speedtests       замер скорости из приложения {lat, lon, accuracy_m, down_mbps, up_mbps, ping_ms, …}
-GET  /api/speedtests       замеры скорости с id больше after — вкладка «Замеры» у оператора
+POST /api/measurements     замер силы связи жителем {lat, lon, accuracy_m, rsrp_dbm, bars, network}
+GET  /api/measurements     замеры силы связи с id больше after — вкладка «Замеры» у оператора
 GET  /api/complaints       жалобы с id больше after и число отклонённых лимитом
 
 Настройки (переменные окружения):
@@ -25,13 +25,14 @@ import math
 import os
 import threading
 import time
+from statistics import median
 from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from covermap.pipeline import Report, build
 from covermap.render import render
@@ -59,13 +60,11 @@ APP_FILES = {
 }
 LISTINGS_KEEP = 500
 CROWD_RADIUS_M = 300  # отметки жителей в этом радиусе — «оценка жителей рядом»
-# Замер скорости из приложения: допустимые значения и запасной сервер для замера.
-SPEED_LIMITS = {"down_mbps": (0, 3000), "up_mbps": (0, 3000), "ping_ms": (0, 20000), "accuracy_m": (0, 5000)}
-SPEED_SERVERS = {"cloudflare", "signalkg"}
-CONNECTIONS = {"wifi", "cellular", "ethernet", "other", "unknown"}
-EFFECTIVE = {"slow-2g", "2g", "3g", "4g"}
-SPEEDTEST_MAX_BYTES = 5 * 1024 * 1024
-SPEEDTEST_PER_MINUTE = 30       # запросов к запасному серверу замера с одного IP
+# Замер силы связи жителем: дБм с экрана телефона (та же шкала, что RSRP в замерах
+# оператора) и/или число палочек. Браузер сам силу сигнала не отдаёт — её вводит житель.
+RSRP_RANGE = (-140.0, -44.0)
+MAX_BARS = 4
+MAX_ACCURACY_M = 5000
 DEFAULT_ORIGINS = "https://house.kg,https://www.house.kg,https://lalafo.kg,https://www.lalafo.kg"
 SOURCES = {"plugin", "panel", "app"}
 SITES = {"house.kg", "lalafo.kg"}
@@ -204,8 +203,16 @@ class Listings:
         return list(reversed(self.items.values()))
 
 
-class Speedtests(Complaints):
-    """Замеры скорости интернета из приложения: точка, скорость, пинг, тип сети."""
+class Measurements(Complaints):
+    """Замеры силы связи жителями: точка, дБм и/или палочки, сеть."""
+
+
+def signal_color(rsrp: float | None, bars: int | None) -> str:
+    """Цвет замера по тем же порогам, что сетка: ≥ −90 зелёный, < −105 красный.
+    Без дБм — по палочкам: 3–4 зелёный, 2 жёлтый, 0–1 красный."""
+    if rsrp is not None:
+        return "green" if rsrp >= -90 else "red" if rsrp < -105 else "yellow"
+    return "green" if bars >= 3 else "yellow" if bars == 2 else "red"
 
 
 class Reports(Complaints):
@@ -218,7 +225,7 @@ def create_app(
     complaints_file: Path | None = None,
     reports_file: Path | None = None,
     listings_file: Path | None = None,
-    speedtests_file: Path | None = None,
+    measurements_file: Path | None = None,
     origins: list[str] | None = None,
     listing_fetcher=None,
 ) -> FastAPI:
@@ -229,7 +236,7 @@ def create_app(
     )
     reports_file = Path(reports_file or os.environ.get("REPORTS_FILE") or complaints_file.with_name("reports.jsonl"))
     listings_file = Path(listings_file or os.environ.get("LISTINGS_FILE") or complaints_file.with_name("listings.json"))
-    speedtests_file = Path(speedtests_file or os.environ.get("SPEEDTESTS_FILE") or complaints_file.with_name("speedtests.jsonl"))
+    measurements_file = Path(measurements_file or os.environ.get("MEASUREMENTS_FILE") or complaints_file.with_name("measurements.jsonl"))
     if origins is None:
         origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()]
 
@@ -253,8 +260,7 @@ def create_app(
     app.state.complaints = Complaints(complaints_file)
     app.state.reports = Reports(reports_file)
     app.state.listings = Listings(listings_file)
-    app.state.speedtests = Speedtests(speedtests_file)
-    speedtest_limit = RateLimit(SPEEDTEST_PER_MINUTE)
+    app.state.measurements = Measurements(measurements_file)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -432,65 +438,41 @@ def create_app(
         cell_id = found.get("cell_id") if found else None
         return app.state.reports.add(lat, lon, cell_id, source, site, level=level, network=network)
 
-    # --- замер скорости интернета ------------------------------------------------
-    # Основной замер приложение делает через speed.cloudflare.com: так меряется интернет
-    # телефона, а не канал до этого сервера. Эти две точки — запасной вариант.
+    @app.post("/api/measurements", status_code=201)
+    async def add_measurement(request: Request):
+        """Сила связи, которую житель увидел на своём телефоне, с точкой GPS.
 
-    @app.get("/api/speedtest/down", include_in_schema=False)
-    async def speedtest_down(request: Request, size: int = Query(1_000_000, alias="bytes")):
-        if speedtest_limit.wait(client_ip(request)):
-            return error(429, "rate_limited", "слишком много замеров, попробуйте позже")
-        size = max(1, min(size, SPEEDTEST_MAX_BYTES))
-        return Response(os.urandom(size), media_type="application/octet-stream",
-                        headers={"Cache-Control": "no-store"})
-
-    @app.post("/api/speedtest/up", include_in_schema=False)
-    async def speedtest_up(request: Request):
-        if speedtest_limit.wait(client_ip(request)):
-            return error(429, "rate_limited", "слишком много замеров, попробуйте позже")
-        received = 0
-        async for chunk in request.stream():
-            received += len(chunk)
-            if received > SPEEDTEST_MAX_BYTES:
-                return error(413, "too_large", "замер отдачи — не больше 5 МБ")
-        return {"received": received}
-
-    @app.post("/api/speedtests", status_code=201)
-    async def add_speedtest(request: Request):
-        """Результат замера скорости с точкой: виден оператору на карте и во вкладке «Замеры»."""
+        Нужно хотя бы одно: rsrp_dbm (−140…−44) или bars (0–4). Видно оператору
+        во вкладке «Замеры» и на карте; в районе замеров — с медианой квадрата для сравнения.
+        """
         fields = await read_object(request)
         if isinstance(fields, JSONResponse):
             return fields
         lat, lon = parse_coordinate(fields.get("lat")), parse_coordinate(fields.get("lon"))
-        values = {}
-        for key, (low, high) in SPEED_LIMITS.items():
-            raw = fields.get(key)
-            if raw is None and key == "up_mbps":
-                values[key] = None
-                continue
-            value = parse_coordinate(raw)
-            if value is None or not low <= value <= high:
-                return error(400, "bad_request", f"{key}: число от {low} до {high}")
-            values[key] = round(value, 2)
-        server = fields.get("server", "cloudflare")
-        connection = fields.get("connection") or "unknown"
-        effective = fields.get("effective")
-        if (lat is None or lon is None or server not in SPEED_SERVERS or connection not in CONNECTIONS
-                or (effective is not None and effective not in EFFECTIVE)):
-            return error(400, "bad_request", "нужны lat, lon, down_mbps, ping_ms, accuracy_m; server и тип сети из списка")
+        accuracy = parse_coordinate(fields.get("accuracy_m"))
+        raw_rsrp, bars, network = fields.get("rsrp_dbm"), fields.get("bars"), fields.get("network")
+        rsrp = None if raw_rsrp is None else parse_coordinate(raw_rsrp)
+        bars_ok = bars is None or (isinstance(bars, int) and not isinstance(bars, bool) and 0 <= bars <= MAX_BARS)
+        if (lat is None or lon is None or accuracy is None or not 0 <= accuracy <= MAX_ACCURACY_M
+                or (raw_rsrp is not None and (rsrp is None or not RSRP_RANGE[0] <= rsrp <= RSRP_RANGE[1]))
+                or not bars_ok or (rsrp is None and bars is None)
+                or (network is not None and network not in NETWORKS)):
+            return error(400, "bad_request",
+                         "нужны lat, lon, accuracy_m и хотя бы одно: rsrp_dbm от −140 до −44 или bars от 0 до 4")
         if not in_city(lat, lon):
             return error(422, "out_of_city", "точка вне Бишкека")
-        wait = app.state.speedtests.allow(client_ip(request))
+        wait = app.state.measurements.allow(client_ip(request))
         if wait:
             return error(429, "rate_limited", "слишком много замеров, попробуйте позже", **{"Retry-After": str(wait)})
         found = index.lookup(lat, lon)
         cell_id = found.get("cell_id") if found else None
-        return app.state.speedtests.add(lat, lon, cell_id, "app", None, **values,
-                                        server=server, connection=connection, effective=effective)
+        return app.state.measurements.add(
+            lat, lon, cell_id, "app", None, accuracy_m=round(accuracy), rsrp_dbm=None if rsrp is None else round(rsrp, 1),
+            bars=bars, network=network, color=signal_color(rsrp, bars))
 
-    @app.get("/api/speedtests")
-    async def speedtests(after: int = 0):
-        return {"speedtests": app.state.speedtests.after(after), "rejected": app.state.speedtests.rejected}
+    @app.get("/api/measurements")
+    async def measurements(after: int = 0):
+        return {"measurements": app.state.measurements.after(after), "rejected": app.state.measurements.rejected}
 
     @app.get("/api/crowd")
     async def crowd(lat: str = "", lon: str = ""):
@@ -512,12 +494,17 @@ def create_app(
         # Итог — самая частая оценка; при равенстве берём худшую, чтобы не приукрашивать.
         order = ["none", "bad", "ok", "good"]
         verdict = max(order, key=lambda key: (levels[key], -order.index(key))) if total else None
-        speeds = sorted(item["down_mbps"] for item in app.state.speedtests.items if near(item))
+        nearby = [item for item in app.state.measurements.items if near(item)]
+        dbm = sorted(item["rsrp_dbm"] for item in nearby if item.get("rsrp_dbm") is not None)
         return {
             "radius_m": CROWD_RADIUS_M,
-            "speedtests": len(speeds),
-            "median_down_mbps": round(speeds[len(speeds) // 2] if len(speeds) % 2 else
-                                      (speeds[len(speeds) // 2 - 1] + speeds[len(speeds) // 2]) / 2, 1) if speeds else None,
+            "measurements": len(nearby),
+            "median_rsrp_dbm": round(median(dbm), 1) if dbm else None,
+            # Итог замеров жителей с учётом тех, где указаны только палочки: самый частый
+            # цвет, при равенстве — худший.
+            "measurements_color": max(("red", "yellow", "green"),
+                                      key=lambda c: (sum(1 for item in nearby if item.get("color") == c),
+                                                     -("red", "yellow", "green").index(c))) if nearby else None,
             "reports": total,
             "levels": levels,
             "verdict": verdict,

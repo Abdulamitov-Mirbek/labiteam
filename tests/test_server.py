@@ -257,7 +257,7 @@ def test_report_accepted_outside_measured_area(client):
 
 def test_crowd_without_reports(client):
     body = client.get("/api/crowd", params=OUTSIDE).json()
-    assert body == {"radius_m": 300, "speedtests": 0, "median_down_mbps": None, "reports": 0,
+    assert body == {"radius_m": 300, "measurements": 0, "median_rsrp_dbm": None, "measurements_color": None, "reports": 0,
                     "levels": {"good": 0, "ok": 0, "bad": 0, "none": 0},
                     "verdict": None, "color": None, "complaints": 0, "in_area": False}
 
@@ -285,54 +285,63 @@ def test_crowd_bad_input(client, params, code):
     assert client.get("/api/crowd", params=params).status_code == code
 
 
-# --- замер скорости интернета из приложения ---------------------------------------
+# --- замер силы связи жителем ---------------------------------------------------------
 
-SPEED = {"lat": 42.8687, "lon": 74.604, "accuracy_m": 12, "down_mbps": 23.4, "up_mbps": 8.1, "ping_ms": 41,
-         "server": "cloudflare", "connection": "cellular", "effective": "4g"}
+MEASURE = {"lat": 42.8687, "lon": 74.604, "accuracy_m": 12, "rsrp_dbm": -98, "bars": 2, "network": "4G"}
 
 
-def test_speedtest_roundtrip(client, tmp_path):
-    r = client.post("/api/speedtests", json=SPEED)
+def test_measurement_roundtrip(client, tmp_path):
+    r = client.post("/api/measurements", json=MEASURE)
     assert r.status_code == 201
     record = r.json()
-    assert record["cell_id"] == "X017_Y015" and record["down_mbps"] == 23.4 and record["source"] == "app"
-    assert {"lat", "lon", "accuracy_m", "down_mbps", "up_mbps", "ping_ms", "server", "connection", "effective"} <= set(record)
-    assert client.get("/api/speedtests").json()["speedtests"] == [record]
-    saved = (tmp_path / "speedtests.jsonl").read_text()
+    assert record["cell_id"] == "X017_Y015" and record["rsrp_dbm"] == -98 and record["bars"] == 2
+    assert record["color"] == "yellow" and record["source"] == "app" and record["network"] == "4G"
+    assert client.get("/api/measurements").json()["measurements"] == [record]
+    saved = (tmp_path / "measurements.jsonl").read_text()
     assert "127.0.0.1" not in saved and "testclient" not in saved
 
 
-def test_speedtest_outside_area_and_without_upload(client):
-    r = client.post("/api/speedtests", json={**SPEED, "lat": 42.81, "lon": 74.63, "up_mbps": None})
-    assert r.status_code == 201 and r.json()["cell_id"] is None and r.json()["up_mbps"] is None
+@pytest.mark.parametrize("change, color", [
+    ({"rsrp_dbm": -85, "bars": None}, "green"), ({"rsrp_dbm": -90}, "green"), ({"rsrp_dbm": -105}, "yellow"),
+    ({"rsrp_dbm": -112}, "red"), ({"rsrp_dbm": None, "bars": 4}, "green"), ({"rsrp_dbm": None, "bars": 2}, "yellow"),
+    ({"rsrp_dbm": None, "bars": 0}, "red"),
+])
+def test_measurement_color_uses_grid_thresholds(client, change, color):
+    assert client.post("/api/measurements", json={**MEASURE, **change}).json()["color"] == color
+
+
+def test_measurement_outside_area(client):
+    r = client.post("/api/measurements", json={**MEASURE, "lat": 42.81, "lon": 74.63, "network": None})
+    assert r.status_code == 201 and r.json()["cell_id"] is None
 
 
 @pytest.mark.parametrize("change", [
-    {"down_mbps": -1}, {"down_mbps": 99999}, {"down_mbps": "fast"}, {"ping_ms": None}, {"accuracy_m": None},
-    {"server": "evil"}, {"connection": "5g-ultra"}, {"effective": "6g"}, {"lat": None},
+    {"rsrp_dbm": None, "bars": None}, {"rsrp_dbm": -30}, {"rsrp_dbm": -150}, {"rsrp_dbm": "сильный"},
+    {"bars": 5}, {"bars": -1}, {"bars": 2.5}, {"bars": True}, {"network": "6G"},
+    {"accuracy_m": None}, {"accuracy_m": 99999}, {"lat": None},
 ])
-def test_speedtest_bad_fields_400(client, change):
-    assert client.post("/api/speedtests", json={**SPEED, **change}).status_code == 400
+def test_measurement_bad_fields_400(client, change):
+    assert client.post("/api/measurements", json={**MEASURE, **change}).status_code == 400
 
 
-def test_speedtest_outside_city_and_limit(client):
-    assert client.post("/api/speedtests", json={**SPEED, "lat": 42.5}).status_code == 422
+def test_measurement_outside_city_and_limit(client):
+    assert client.post("/api/measurements", json={**MEASURE, "lat": 42.5}).status_code == 422
     for _ in range(server_app.COMPLAINTS_PER_MINUTE):
-        assert client.post("/api/speedtests", json=SPEED).status_code == 201
-    assert client.post("/api/speedtests", json=SPEED).status_code == 429
+        assert client.post("/api/measurements", json=MEASURE).status_code == 201
+    assert client.post("/api/measurements", json=MEASURE).status_code == 429
 
 
-def test_crowd_includes_speed_median(client):
-    for down in (5.0, 30.0, 12.0):
-        client.post("/api/speedtests", json={**SPEED, "down_mbps": down})
-    body = client.get("/api/crowd", params={"lat": SPEED["lat"], "lon": SPEED["lon"]}).json()
-    assert body["speedtests"] == 3 and body["median_down_mbps"] == 12.0
+def test_crowd_includes_measured_dbm(client):
+    for dbm in (-90, -110, -100):
+        client.post("/api/measurements", json={**MEASURE, "rsrp_dbm": dbm})
+    client.post("/api/measurements", json={**MEASURE, "rsrp_dbm": None, "bars": 1})
+    body = client.get("/api/crowd", params={"lat": MEASURE["lat"], "lon": MEASURE["lon"]}).json()
+    assert body["measurements"] == 4 and body["median_rsrp_dbm"] == -100.0
+    # цвета: −90 зелёный, −110 и 1 палочка красные, −100 жёлтый → итог красный
+    assert body["measurements_color"] == "red"
 
 
-def test_speedtest_fallback_endpoints(client):
-    r = client.get("/api/speedtest/down", params={"bytes": 2048})
-    assert r.status_code == 200 and len(r.content) == 2048 and r.headers["cache-control"] == "no-store"
-    assert len(client.get("/api/speedtest/down", params={"bytes": 10**9}).content) == server_app.SPEEDTEST_MAX_BYTES
-    assert client.post("/api/speedtest/up", content=b"x" * 4096).json() == {"received": 4096}
-    too_big = b"x" * (server_app.SPEEDTEST_MAX_BYTES + 1)
-    assert client.post("/api/speedtest/up", content=too_big).status_code == 413
+def test_crowd_bars_only(client):
+    client.post("/api/measurements", json={**MEASURE, "rsrp_dbm": None, "bars": 4})
+    body = client.get("/api/crowd", params={"lat": MEASURE["lat"], "lon": MEASURE["lon"]}).json()
+    assert body["median_rsrp_dbm"] is None and body["measurements_color"] == "green"

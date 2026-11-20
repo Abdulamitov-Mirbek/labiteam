@@ -237,53 +237,55 @@ describe("мобильная версия /app/", () => {
     await page.close();
   });
 
-  test("вне района замеров: оценка жителей и отметка «как ловит» доходит до оператора", async () => {
+  test("вне района замеров: замер жителя принимается и показывается на кольце", async () => {
     const page = await (await browser.page(base)).setup({ geo: OUTSIDE });
     await page.open(base + "/app/");
     await page.click(`nav button[data-s="here"]`);
-    await waitFor(async () => /Замеров оператора здесь нет/.test(await page.text("#hint")), "подсказка про оценку жителей");
+    await waitFor(async () => /Замеров оператора здесь нет/.test(await page.text("#hint")), "подсказка про замеры жителей");
     assert.equal(await page.text("#value"), "—");
     assert.match(await page.text("#quality"), /нет данных/);
-    await page.click(`#rate [data-level="bad"]`);
-    const report = await waitFor(async () => (await api("/api/reports")).reports.find(r => r.source === "app"), "отметка на сервере");
-    assert.equal(report.level, "bad");
-    assert.equal(report.cell_id, null, "вне района у отметки нет квадрата");
-    // После отметки тот же экран показывает оценку жителей.
+    assert.equal(await page.eval(`document.querySelector("#sendmeasure").disabled`), true, "без палочек и дБм отправлять нечего");
+    await page.click(`#bars [data-bars="1"]`);
+    await page.click("#sendmeasure");
+    const m = await waitFor(async () => (await api("/api/measurements")).measurements.find(x => x.bars === 1 && !x.cell_id), "замер на сервере");
+    assert.equal(m.rsrp_dbm, null);
+    assert.equal(m.color, "red");
+    // Тот же экран после обновления показывает замер жителей.
     await page.click("#refresh");
-    await waitFor(async () => /Жители: плохо \(1\)/.test(await page.text("#quality")), "«Жители: плохо (1)»");
-    await page.shot("06-outside-crowd");
+    await waitFor(async () => /Замеры жителей: слабый сигнал \(1\)/.test(await page.text("#quality")), "«Замеры жителей: слабый сигнал (1)»");
+    await page.shot("06-outside-measure");
     assert.deepEqual(page.errors, []);
     await page.close();
   });
 
-  test("замер скорости в приложении виден на странице оператора", async () => {
+  test("сила связи из приложения видна на странице оператора", async () => {
     const page = await (await browser.page(base)).setup({ geo: IN_AREA });
-    // Без Cloudflare: проверяем и запасной замер через сервер проекта.
-    await page.send("Network.setBlockedURLs", { urls: ["*speed.cloudflare.com*"] });
     await page.open(base + "/app/");
     await page.click(`nav button[data-s="here"]`);
     await waitFor(async () => (await page.text("#cell")) === "X017_Y015", "квадрат X017_Y015");
-    await page.click("#speedtest");
-    await waitFor(async () => /отправлен оператору/.test(await page.text("#sp-hint")), "замер отправлен", 60000);
-    assert.match(await page.text("#sp-down"), /^\d+\.\d$/);
-    assert.match(await page.text("#sp-ping"), /^\d+$/);
-    assert.match(await page.text("#sp-hint"), /через сервер Сигнал\.kg/);
-    const test = (await api("/api/speedtests")).speedtests.at(-1);
-    assert.equal(test.cell_id, "X017_Y015");
-    assert.equal(test.server, "signalkg");
-    assert.ok(test.down_mbps > 0 && test.ping_ms >= 0);
-    await page.shot("07-speedtest");
+    await page.eval(`(() => { const i = document.querySelector("#dbm"); i.value = "500"; i.dispatchEvent(new Event("input")); })()`);
+    assert.equal(await page.eval(`document.querySelector("#sendmeasure").disabled`), true, "500 дБм не бывает");
+    await page.eval(`(() => { const i = document.querySelector("#dbm"); i.value = "112"; i.dispatchEvent(new Event("input")); })()`);
+    await page.click(`#bars [data-bars="1"]`);
+    await page.click(`#nets [data-net="4G"]`);
+    await page.click("#sendmeasure");
+    await waitFor(async () => /отправлен оператору/.test(await page.text("#m-hint")), "замер отправлен");
+    const m = (await api("/api/measurements")).measurements.at(-1);
+    assert.deepEqual([m.cell_id, m.rsrp_dbm, m.bars, m.network, m.color], ["X017_Y015", -112, 1, "4G", "red"]);
+    await page.shot("07-measure");
     assert.deepEqual(page.errors, []);
     await page.close();
 
-    // Страница оператора: вкладка «Замеры» и плашка со скоростью на карте.
+    // Страница оператора: вкладка «Замеры», сравнение с картой и плашка на карте.
     const panel = await (await browser.page(base)).setup({ width: 1400, height: 900 });
     await panel.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
     await panel.open(base + "/#speed");
     await waitFor(async () => /X017_Y015/.test(await panel.text("#s-table")), "замер в таблице оператора");
-    assert.match(await panel.text("#s-stats"), /Получено\s*1/);
-    assert.ok(await panel.eval(`document.querySelectorAll(".spd").length >= 1`), "плашка замера на карте оператора");
-    await panel.shot("08-operator-speed");
+    const row = await panel.text("#s-table");
+    assert.match(row, /−112 дБм/);
+    assert.match(row, /Хуже, чем на карте/, "медиана квадрата −98 — житель видит хуже");
+    assert.ok(await panel.eval(`[...document.querySelectorAll(".spd span")].some(e => e.textContent === "−112")`), "плашка −112 на карте оператора");
+    await panel.shot("08-operator-measure");
     assert.deepEqual(panel.errors, []);
     await panel.close();
   });
