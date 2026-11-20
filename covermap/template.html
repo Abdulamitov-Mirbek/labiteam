@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Карта покрытия</title>
+<style>/*LEAFLET_CSS*/</style>
+<style>
+  :root { --green:#2e9e5b; --yellow:#e2b21c; --red:#d63b3b; --ink:#1c2026; --muted:#667080; --line:#e2e5ea; }
+  html, body { height:100%; margin:0; }
+  body { display:flex; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
+  #panel { width:340px; flex:none; overflow-y:auto; padding:18px 18px 28px; border-right:1px solid var(--line); background:#fff; box-sizing:border-box; }
+  #map { flex:1; background:#eef0f3; }
+  h1 { font-size:19px; margin:0 0 2px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:22px 0 8px; font-weight:600; }
+  .sub { color:var(--muted); font-size:13px; }
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .tile { border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .tile b { display:block; font-size:21px; font-variant-numeric:tabular-nums; line-height:1.2; }
+  .tile span { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  td, th { padding:4px 0; text-align:left; border-bottom:1px solid var(--line); font-weight:400; }
+  th { color:var(--muted); font-size:12px; }
+  td.num, th.num { text-align:right; }
+  tr:last-child td { border-bottom:0; }
+  .dot { display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:7px; vertical-align:-1px; }
+  .note { color:var(--muted); font-size:12.5px; margin:8px 0 0; }
+  .win { font-weight:600; }
+  .site-label, .cell-label { background:none; border:0; box-shadow:none; font-weight:700; font-size:12px; color:var(--ink);
+                 text-shadow:0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
+  .site-label::before, .cell-label::before { display:none; }
+  .leaflet-control-layers { font-size:13px; }
+  @media (max-width: 760px) { body { flex-direction:column; } #panel { width:auto; max-height:45%; border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<aside id="panel">
+  <h1>Карта покрытия</h1>
+  <div class="sub" id="subtitle"></div>
+
+  <h2>Сетка 200 × 200 м</h2>
+  <div class="tiles" id="tiles"></div>
+  <p class="note" id="grid-note"></p>
+
+  <h2>Худшие квадраты</h2>
+  <table id="worst"></table>
+
+  <h2>Площадки для новых БС</h2>
+  <table id="pair"></table>
+  <p class="note" id="pair-note"></p>
+
+  <h2>Жадный алгоритм и полный перебор</h2>
+  <table id="algo"></table>
+  <p class="note" id="algo-note"></p>
+
+  <h2>День и ночь</h2>
+  <table id="daynight"></table>
+  <p class="note" id="daynight-note"></p>
+
+  <h2>Очистка данных</h2>
+  <table id="dropped"></table>
+</aside>
+<div id="map"></div>
+
+<script>/*LEAFLET_JS*/</script>
+<script>/*HEAT_JS*/</script>
+<script>
+const DATA = __DATA__;
+const COLORS = { green: "#2e9e5b", yellow: "#e2b21c", red: "#d63b3b" };
+const COLOR_NAMES = { green: "Зелёные (≥ −90 дБм)", yellow: "Жёлтые (−105…−90)", red: "Красные (< −105), слабая зона" };
+const REASONS = {
+  duplicate: "дубли", out_of_bounds: "координаты вне района", rsrp_out_of_range: "RSRP вне −140…−44",
+  empty_row: "пустые строки", not_a_number: "нечисловые значения", malformed_row: "не хватает полей",
+  bad_timestamp: "неверное время",
+};
+const fmt = n => String(n).replace("-", "−");
+
+function el(tag, text, cls) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+function row(table, cells, tag = "td") {
+  const tr = el("tr");
+  cells.forEach((c, i) => {
+    const cell = c instanceof Node ? c : el(tag, c);
+    if (i > 0 && !(c instanceof Node)) cell.classList.add("num");
+    tr.append(cell);
+  });
+  table.append(tr);
+  return tr;
+}
+
+// --- панель -----------------------------------------------------------------
+const S = DATA.summary;
+document.getElementById("subtitle").textContent =
+  `${S.clean_rows} замеров после очистки из ${S.total_rows}`;
+
+const tiles = document.getElementById("tiles");
+for (const [value, label, color] of [
+  [S.colors.red, "красных (слабых)", COLORS.red],
+  [S.colors.yellow, "жёлтых", COLORS.yellow],
+  [S.colors.green, "зелёных", COLORS.green],
+  [S.dropped_rows, "строк отброшено", null],
+]) {
+  const tile = el("div", undefined, "tile");
+  const b = el("b", value);
+  if (color) b.style.color = color;
+  tile.append(b, el("span", label));
+  tiles.append(tile);
+}
+document.getElementById("grid-note").textContent =
+  `Замеры есть в ${S.cells_with_data} клетках; ${S.cells_skipped} из них содержат меньше ${S.min_samples} замеров и не учитываются.`;
+
+const worst = document.getElementById("worst");
+row(worst, ["Квадрат", "Медиана, дБм", "Замеров"], "th");
+for (const c of DATA.worst) row(worst, [c.id, fmt(c.median), c.samples]);
+
+const pair = document.getElementById("pair");
+row(pair, ["Площадка", "Красных в 1 км"], "th");
+for (const c of DATA.candidates.filter(c => c.chosen)) row(pair, [c.id, c.covers]);
+const totalRow = row(pair, ["Вместе, без двойного учёта", S.covered_weak_cells]);
+totalRow.classList.add("win");
+document.getElementById("pair-note").textContent =
+  `Покрыто ${S.covered_weak_cells} из ${S.colors.red} красных квадратов. Допустимых площадок ${S.allowed_candidates} из ${DATA.candidates.length}: остальные ближе 500 м к существующей БС.`;
+
+const algo = document.getElementById("algo");
+row(algo, ["Алгоритм", "Пара", "Покрыто"], "th");
+row(algo, ["Полный перебор", S.brute.sites.join(" + "), S.brute.covered]);
+row(algo, ["Жадный", S.greedy.sites.join(" + "), S.greedy.covered]);
+document.getElementById("algo-note").textContent = S.brute.covered > S.greedy.covered
+  ? `Жадный выбор теряет ${S.brute.covered - S.greedy.covered} кв.: он берёт лучшую одиночную площадку и уже не пересматривает её. Перебор проверил ${S.brute.pairs_checked} пар.`
+  : `На этих данных жадный выбор даёт то же покрытие, что и перебор (${S.brute.pairs_checked} пар).`;
+
+const dn = document.getElementById("daynight");
+row(dn, ["", "Замеров", "Клеток", "Красных", "Медиана"], "th");
+for (const key of ["day", "night"]) {
+  const p = S.periods[key];
+  row(dn, [key === "day" ? "День" : "Ночь", p.measurements, p.cells, p.red, p.median === null ? "—" : fmt(p.median)]);
+}
+document.getElementById("daynight-note").textContent =
+  `Ночь — ${S.night_hours[0]}:00–0${S.night_hours[1]}:00 местного времени. Слои «День» и «Ночь» переключаются на карте.`;
+
+const dropped = document.getElementById("dropped");
+row(dropped, ["Причина", "Строк"], "th");
+for (const [reason, count] of Object.entries(S.dropped).sort((a, b) => b[1] - a[1]))
+  row(dropped, [REASONS[reason] || reason, count]);
+row(dropped, ["Всего отброшено", S.dropped_rows]).classList.add("win");
+
+// --- карта -------------------------------------------------------------------
+const map = L.map("map", { preferCanvas: true });
+const B = DATA.bounds;
+map.fitBounds([[B.lat_min, B.lon_min], [B.lat_max, B.lon_max]], { padding: [20, 20] });
+// Подложка: растровые тайлы 2ГИС. Если они не отдаются (нет доступа, сбой),
+// карта один раз переключается на запасную подложку Esri. Обе работают и для
+// страницы, открытой как локальный файл. Незагруженный тайл остаётся пустым.
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+const esri = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19, attribution: "Tiles &copy; Esri", errorTileUrl: BLANK });
+const dgis = L.tileLayer(
+  "https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1" + (DATA.dgis_key ? "&key=" + encodeURIComponent(DATA.dgis_key) : ""),
+  { maxZoom: 18, subdomains: "0123", attribution: "&copy; 2ГИС", errorTileUrl: BLANK });
+// Переключение только если 2ГИС недоступен целиком: ни одного загруженного
+// тайла и несколько ошибок подряд. Единичный сбой тайла подложку не меняет.
+let dgisLoaded = 0, dgisErrors = 0;
+dgis.on("tileload", () => { dgisLoaded++; });
+dgis.on("tileerror", () => {
+  if (++dgisErrors >= 4 && dgisLoaded === 0 && map.hasLayer(dgis)) {
+    map.removeLayer(dgis);
+    esri.addTo(map).bringToBack();
+  }
+});
+dgis.addTo(map);
+L.rectangle([[B.lat_min, B.lon_min], [B.lat_max, B.lon_max]],
+  { color: "#1c2026", weight: 1.5, fill: false, dashArray: "6 5", interactive: false }).addTo(map);
+
+const covered = new Set(DATA.covered);
+function gridLayer(cells, markCovered) {
+  const group = L.layerGroup();
+  for (const c of cells) {
+    const isCovered = markCovered && covered.has(c.id);
+    L.polygon(c.corners, {
+      color: isCovered ? "#1c2026" : COLORS[c.color], weight: isCovered ? 1.4 : 0.6,
+      fillColor: COLORS[c.color], fillOpacity: 0.55,
+    }).bindTooltip(
+      `${c.id}: медиана ${fmt(c.median)} дБм, замеров ${c.samples}` +
+      (isCovered ? " — покрывается новой БС" : ""), { sticky: true }
+    ).addTo(group);
+  }
+  return group;
+}
+const grids = {
+  "Сетка: все замеры": gridLayer(DATA.grids.all, true),
+  "Сетка: день": gridLayer(DATA.grids.day, false),
+  "Сетка: ночь": gridLayer(DATA.grids.night, false),
+};
+grids["Сетка: все замеры"].addTo(map);
+
+const worstLayer = L.layerGroup();
+DATA.worst.forEach((c, i) => {
+  L.polygon(c.corners, { color: "#111", weight: 3, fill: false, interactive: false }).addTo(worstLayer);
+  L.marker(c.center, { opacity: 0, interactive: false })
+    .bindTooltip(String(i + 1), { permanent: true, direction: "center", className: "cell-label" }).addTo(worstLayer);
+});
+worstLayer.addTo(map);
+
+const towers = L.layerGroup();
+const exclusion = L.layerGroup();
+for (const t of DATA.towers) {
+  L.circleMarker([t.lat, t.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#1c2026", fillOpacity: 1 })
+    .bindTooltip(`Существующая БС ${t.id}`).addTo(towers);
+  L.circle([t.lat, t.lon], { radius: 500, color: "#1c2026", weight: 1, dashArray: "4 4", fillOpacity: 0.05, interactive: false })
+    .addTo(exclusion);
+}
+towers.addTo(map);
+
+const candidates = L.layerGroup();
+const radius = L.layerGroup();
+for (const c of DATA.candidates) {
+  const fill = c.chosen ? "#2563eb" : c.allowed ? "#fff" : "#b9bec7";
+  const marker = L.circleMarker([c.lat, c.lon], {
+    radius: c.chosen ? 9 : 6, color: c.chosen ? "#fff" : "#2563eb", weight: 2, fillColor: fill, fillOpacity: 1,
+  }).bindTooltip(c.allowed
+    ? `Площадка ${c.id}: ${c.covers} красных кв. в радиусе 1 км` + (c.chosen ? " — выбрана" : "")
+    : `Площадка ${c.id}: недопустима, ближе 500 м к БС`);
+  marker.addTo(candidates);
+  if (c.chosen) {
+    L.marker([c.lat, c.lon], { opacity: 0, interactive: false })
+      .bindTooltip(c.id, { permanent: true, direction: "top", offset: [0, -8], className: "site-label" }).addTo(candidates);
+    L.circle([c.lat, c.lon], { radius: 1000, color: "#2563eb", weight: 2, fillOpacity: 0.06, interactive: false }).addTo(radius);
+  }
+}
+candidates.addTo(map);
+radius.addTo(map);
+
+const heat = L.heatLayer(DATA.heat, {
+  radius: 22, blur: 18, maxZoom: 15, minOpacity: 0.25,
+  gradient: { 0.2: "#2e9e5b", 0.5: "#e2b21c", 0.8: "#e8703a", 1.0: "#d63b3b" },
+});
+
+L.control.layers(grids, {
+  "Тепловая карта слабого сигнала": heat,
+  "Топ-3 худших квадрата": worstLayer,
+  "Существующие БС": towers,
+  "Запретная зона 500 м": exclusion,
+  "Площадки-кандидаты": candidates,
+  "Радиус 1 км выбранных площадок": radius,
+}, { collapsed: false }).addTo(map);
+
+const legend = L.control({ position: "bottomright" });
+legend.onAdd = () => {
+  const box = L.DomUtil.create("div", "leaflet-control-layers");
+  box.style.padding = "8px 10px";
+  for (const key of ["green", "yellow", "red"]) {
+    const line = el("div");
+    const dot = el("span", undefined, "dot");
+    dot.style.background = COLORS[key];
+    line.append(dot, COLOR_NAMES[key]);
+    box.append(line);
+  }
+  const line = el("div");
+  const dot = el("span", undefined, "dot");
+  dot.style.cssText = "background:#d63b3b;outline:1.5px solid #1c2026";
+  line.append(dot, "Красный, покрыт новой БС");
+  box.append(line);
+  return box;
+};
+legend.addTo(map);
+</script>
+</body>
+</html>

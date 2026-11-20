@@ -1,9 +1,0 @@
-.venv
-.git
-__pycache__
-.pytest_cache
-*.jpg
-*.zip
-tests
-outbox
-data

@@ -1,0 +1,57 @@
+{
+  "total_rows": 5000,
+  "clean_rows": 4800,
+  "dropped_rows": 200,
+  "dropped": {
+    "bad_timestamp": 7,
+    "not_a_number": 9,
+    "empty_row": 15,
+    "rsrp_out_of_range": 25,
+    "duplicate": 105,
+    "out_of_bounds": 30,
+    "malformed_row": 9
+  },
+  "cells_with_data": 398,
+  "cells_skipped": 11,
+  "min_samples": 5,
+  "colors": {
+    "green": 26,
+    "yellow": 187,
+    "red": 174
+  },
+  "allowed_candidates": 16,
+  "covered_weak_cells": 111,
+  "brute": {
+    "sites": [
+      "C09",
+      "C14"
+    ],
+    "covered": 111,
+    "pairs_checked": 120
+  },
+  "greedy": {
+    "sites": [
+      "C16",
+      "C17"
+    ],
+    "covered": 108
+  },
+  "night_hours": [
+    22,
+    6
+  ],
+  "periods": {
+    "day": {
+      "measurements": 3212,
+      "cells": 359,
+      "red": 177,
+      "median": -104.9
+    },
+    "night": {
+      "measurements": 1588,
+      "cells": 149,
+      "red": 56,
+      "median": -103.8
+    }
+  }
+}
