@@ -3,7 +3,8 @@
 GET  /                     панель оператора (карта, «Что если», игра, жалобы)
 GET  /api/signal?lat=&lon= качество связи в точке — для Chrome-плагина
 GET  /api/listing?url=     связь в доме из объявления house.kg или lalafo.kg — «Поделиться» на телефоне
-GET  /api/cells            сетка 200×200 м с медианами и цветами
+GET  /api/cells            сетка 200×200 м с медианами, цветами и углами квадратов
+GET  /api/listings         квартиры, проверенные через «Поделиться» или плагин, — для карты в приложении
 GET  /api/result           result.json
 POST /api/complaints       жалоба «Здесь нет связи» {lat, lon, source, site}
 POST /api/reports          отметка жителя «как ловит связь» {lat, lon, level, network, source, site}
@@ -21,7 +22,7 @@ import math
 import os
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,13 +42,18 @@ ROOT = Path(__file__).resolve().parent.parent
 WEBAPP = ROOT / "webapp"
 FONTS_CSS = ROOT / "covermap" / "vendor" / "fonts.css"
 # Файлы приложения, которые отдаются как есть: имя → тип содержимого.
+VENDOR = ROOT / "covermap" / "vendor"
 APP_FILES = {
-    "manifest.webmanifest": "application/manifest+json",
-    "sw.js": "text/javascript",
-    "icon.svg": "image/svg+xml",
-    "icon-192.png": "image/png",
-    "icon-512.png": "image/png",
+    "manifest.webmanifest": (WEBAPP / "manifest.webmanifest", "application/manifest+json"),
+    "sw.js": (WEBAPP / "sw.js", "text/javascript"),
+    "icon.svg": (WEBAPP / "icon.svg", "image/svg+xml"),
+    "icon-192.png": (WEBAPP / "icon-192.png", "image/png"),
+    "icon-512.png": (WEBAPP / "icon-512.png", "image/png"),
+    # Leaflet для карты в приложении — тот же, что встроен в панель.
+    "leaflet.js": (VENDOR / "leaflet.js", "text/javascript"),
+    "leaflet.css": (VENDOR / "leaflet.css", "text/css"),
 }
+LISTINGS_KEEP = 500
 DEFAULT_ORIGINS = "https://house.kg,https://www.house.kg,https://lalafo.kg,https://www.lalafo.kg"
 SOURCES = {"plugin", "panel", "app"}
 SITES = {"house.kg", "lalafo.kg"}
@@ -136,6 +142,49 @@ class Complaints:
         return [item for item in self.items if item["id"] > last_id]
 
 
+class Listings:
+    """Квартиры, которые жители проверили через «Поделиться» или плагин.
+
+    Только публичные данные объявления: ссылка, сайт, заголовок, точка и связь в
+    квадрате. Повторная проверка той же ссылки обновляет запись, а не дублирует её.
+    """
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.items: "OrderedDict[str, dict]" = OrderedDict()
+        self.lock = threading.Lock()
+        if self.path.exists():
+            try:
+                for item in json.loads(self.path.read_text(encoding="utf-8")):
+                    if isinstance(item, dict) and isinstance(item.get("url"), str):
+                        self.items[item["url"]] = item
+            except (ValueError, TypeError):
+                self.items.clear()
+
+    def remember(self, found: dict) -> None:
+        signal = found.get("signal") or {}
+        if not found.get("in_area") or signal.get("status") != "ok":
+            return
+        record = {
+            "url": found["url"], "site": found.get("site"), "title": (found.get("title") or "")[:200],
+            "lat": round(found["lat"], 6), "lon": round(found["lon"], 6),
+            "cell_id": signal.get("cell_id"), "color": signal.get("color"), "quality": signal.get("quality"),
+            "median": signal.get("median"), "checked": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        with self.lock:
+            self.items.pop(record["url"], None)
+            self.items[record["url"]] = record
+            while len(self.items) > LISTINGS_KEEP:
+                self.items.popitem(last=False)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(list(self.items.values()), ensure_ascii=False), encoding="utf-8")
+            tmp.replace(self.path)
+
+    def all(self) -> list[dict]:
+        return list(reversed(self.items.values()))
+
+
 class Reports(Complaints):
     """Отметки жителей «как ловит связь»: то же хранилище и тот же лимит, свой файл."""
 
@@ -145,6 +194,7 @@ def create_app(
     dgis_key: str | None = None,
     complaints_file: Path | None = None,
     reports_file: Path | None = None,
+    listings_file: Path | None = None,
     origins: list[str] | None = None,
     listing_fetcher=None,
 ) -> FastAPI:
@@ -154,6 +204,7 @@ def create_app(
         complaints_file or os.environ.get("COMPLAINTS_FILE") or ROOT / "var" / "complaints.jsonl"
     )
     reports_file = Path(reports_file or os.environ.get("REPORTS_FILE") or complaints_file.with_name("reports.jsonl"))
+    listings_file = Path(listings_file or os.environ.get("LISTINGS_FILE") or complaints_file.with_name("listings.json"))
     if origins is None:
         origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()]
 
@@ -167,6 +218,7 @@ def create_app(
         {
             "cell_id": c.id, "median": round(c.median, 2), "color": c.color, "samples": c.samples,
             "center": [round(x, 6) for x in report.bounds.cell_center(c.cell)],
+            "corners": [[round(a, 6), round(b, 6)] for a, b in report.bounds.cell_corners(c.cell)],
         }
         for c in report.cells
     ]
@@ -175,6 +227,7 @@ def create_app(
     app.state.report = report
     app.state.complaints = Complaints(complaints_file)
     app.state.reports = Reports(reports_file)
+    app.state.listings = Listings(listings_file)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -213,8 +266,9 @@ def create_app(
     async def app_file(name: str):
         if name not in APP_FILES:
             return error(404, "not_found", "нет такого файла")
+        path, media_type = APP_FILES[name]
         headers = {"Cache-Control": "no-cache"} if name == "sw.js" else None
-        return FileResponse(WEBAPP / name, media_type=APP_FILES[name], headers=headers)
+        return FileResponse(path, media_type=media_type, headers=headers)
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     async def panel_manifest():
@@ -274,7 +328,13 @@ def create_app(
             listing_cache.put(link, cached)
         if isinstance(cached, tuple):
             return error(*cached)
+        app.state.listings.remember(cached)
         return cached
+
+    @app.get("/api/listings")
+    async def listings():
+        """Проверенные квартиры для карты в приложении — новые первыми."""
+        return {"listings": app.state.listings.all()}
 
     @app.get("/api/cells")
     async def all_cells():

@@ -11,6 +11,7 @@
 <link rel="manifest" href="/app/manifest.webmanifest">
 <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/app/icon-192.png">
+<link rel="stylesheet" href="/app/leaflet.css">
 <style>/*FONTS_CSS*/</style>
 <style>
 :root{color-scheme:light;--bg:#f3f4f6;--card:#fff;--line:#e5e7eb;--ink:#111827;--muted:#6b7280;--soft:#f6f7f9;--nav:#111a2e;
@@ -27,6 +28,35 @@ header b{display:block;font-size:17px}header small{color:#aeb8cc;font-size:12.5p
 .net i{width:8px;height:8px;border-radius:50%;background:#22c55e}.net.off i{background:#f59e0b}
 main{flex:1;overflow-y:auto;padding:16px 16px 24px}
 .screen{display:none}.screen.on{display:block}
+/* экран «Карта» */
+body.mapmode main{padding:0;overflow:hidden;position:relative}
+#s-map.on{position:absolute;inset:0}
+#amap{position:absolute;inset:0;background:#ecebe6}
+.mtools{position:absolute;z-index:500;top:12px;left:12px;right:12px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.mtools button{pointer-events:auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 12px;font:600 13px Inter,system-ui,sans-serif;box-shadow:0 2px 8px rgba(15,23,42,.12);min-height:36px;cursor:pointer}
+.mtools button[aria-pressed="false"]{color:var(--muted);box-shadow:none;background:#f9fafb}
+.mtools button i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.locbtn{position:absolute;z-index:500;right:12px;bottom:calc(34% + 12px);width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);box-shadow:0 2px 8px rgba(15,23,42,.15);display:grid;place-items:center;cursor:pointer}
+.sheet{position:absolute;z-index:600;left:0;right:0;bottom:0;background:var(--card);border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(15,23,42,.12);height:34%;display:flex;flex-direction:column;transition:height .25s}
+.sheet.open{height:72%}
+.sheet .grab{border:0;background:none;width:100%;padding:8px 16px 4px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.sheet .grab::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:#d1d5db;margin:0 auto 8px}
+.sheet h3{margin:0;font-size:16px}.sheet .sub{color:var(--muted);font-size:12.5px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:4px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.sheet ul{list-style:none;margin:0;padding:0 0 8px;overflow-y:auto}
+.sheet.min{height:auto}.sheet.min ul{display:none}
+.sheet li button{display:flex;gap:10px;align-items:flex-start;width:100%;border:0;border-top:1px solid var(--line);background:none;padding:10px 16px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.sheet li .t{font-weight:600;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sheet li .m{color:var(--muted);font-size:12.5px}
+.sheet .none{padding:12px 16px 16px;color:var(--muted);font-size:13.5px}
+.flat{width:30px!important;height:30px!important;margin:-30px 0 0 -15px!important}
+.flat span{display:grid;place-items:center;width:30px;height:30px;border-radius:9px 9px 9px 2px;transform:rotate(-45deg);background:var(--c);border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.flat svg{transform:rotate(45deg);width:15px;height:15px}
+.rdot{width:12px!important;height:12px!important;border-radius:50%;background:#fff;border:3.5px solid var(--c);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.me{width:16px!important;height:16px!important;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.2)}
+.pop b{display:block;font-size:14px;margin-bottom:4px}.pop .q{font-weight:600}.pop a{display:inline-block;margin-top:6px;color:var(--blue);font-weight:600}
+.leaflet-container{font-family:Inter,system-ui,sans-serif}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
 .pad{padding:14px 16px}
 .gauge{padding:22px 16px 18px;text-align:center}
@@ -64,7 +94,7 @@ label.field{display:block;font-size:13px;color:var(--muted);margin-bottom:12px}
 label.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;font-size:15px}
 label.switch input{width:22px;height:22px;accent-color:var(--blue);flex:none}
 .settings>*+*{border-top:1px solid var(--line)}
-nav{display:grid;grid-template-columns:repeat(3,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);flex:none}
+nav{display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);flex:none}
 nav button{border:0;background:none;padding:10px 0 12px;font:500 12.5px Inter,system-ui,sans-serif;color:var(--muted);display:grid;justify-items:center;gap:4px;cursor:pointer;min-height:56px}
 nav button.on{color:var(--blue)}
 nav svg{width:22px;height:22px}
@@ -87,7 +117,22 @@ a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font
 </header>
 
 <main>
-<section class="screen on" id="s-here">
+<section class="screen" id="s-map">
+  <div id="amap"></div>
+  <div class="mtools" id="mtools">
+    <button data-layer="cells" aria-pressed="true">Покрытие</button>
+    <button data-layer="flats" aria-pressed="true"><i style="background:var(--green)"></i>Квартиры</button>
+    <button data-layer="reports" aria-pressed="true"><i style="background:#fff;box-shadow:0 0 0 2.5px var(--red) inset"></i>Сигналы жителей</button>
+  </div>
+  <button class="locbtn" id="locate" aria-label="Показать, где я"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  <div class="sheet" id="sheet">
+    <button class="grab" id="grab"><h3 id="sh-title">Квартиры с хорошей связью</h3>
+      <div class="legend"><span><i style="background:var(--green)"></i>хорошая</span><span><i style="background:var(--yellow)"></i>средняя</span><span><i style="background:var(--red)"></i>слабая</span><span id="sh-count"></span></div></button>
+    <ul id="flats"></ul>
+  </div>
+</section>
+
+<section class="screen" id="s-here">
   <div class="card gauge">
     <div class="ring">
       <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -170,12 +215,14 @@ a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font
 </main>
 
 <nav>
-  <button class="on" data-s="here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 10a13 13 0 0 1 18 0M6.5 13.5a8 8 0 0 1 11 0"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor"/></svg>Связь здесь</button>
+  <button class="on" data-s="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>Карта</button>
+  <button data-s="here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 10a13 13 0 0 1 18 0M6.5 13.5a8 8 0 0 1 11 0"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor"/></svg>Связь здесь</button>
   <button data-s="queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Очередь</button>
   <button data-s="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Настройки</button>
 </nav>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="/app/leaflet.js"></script>
 <script>
 {
 const DEMO = { lat: 42.8687, lon: 74.604 };
@@ -198,12 +245,139 @@ function toast(text) {
   toast.timer = setTimeout(() => $("toast").classList.remove("on"), 2600);
 }
 
+/* --- экран «Карта»: где как ловит связь и квартиры с хорошей связью --- */
+const MAP_COLORS = { green: "#1f9d55", yellow: "#e3a92b", red: "#d93636" };
+const REPORT_COLORS = { good: "#1f9d55", ok: "#e3a92b", bad: "#d93636", none: "#111827" };
+const REPORT_NAMES = { good: "отлично", ok: "нормально", bad: "плохо", none: "нет связи" };
+const BISHKEK_AREA = [[42.84, 74.56], [42.876, 74.609]];
+let amap = null, meMarker = null;
+const groups = {}, flatMarkers = {};
+const flatIcon = color => L.divIcon({ className: "flat", iconSize: null,
+  html: `<span style="--c:${color}"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 3 10.5V21h6.5v-6h5v6H21V10.5z"/></svg></span>` });
+const node = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
+
+async function getJson(path, cacheKey) {
+  try {
+    const res = await fetch(path, { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const body = await res.json();
+    if (cacheKey) store.set(cacheKey, body);
+    return body;
+  } catch (e) {
+    return cacheKey ? store.get(cacheKey, null) : null;  // без сети — последний загруженный вариант
+  }
+}
+
+function openMap() {
+  if (amap) { setTimeout(() => amap.invalidateSize(), 0); return; }
+  amap = L.map("amap", { zoomControl: false, attributionControl: true });
+  // Район целиком над нижней панелью со списком (она занимает ~34 % экрана).
+  amap.fitBounds(BISHKEK_AREA, { paddingTopLeft: [10, 56], paddingBottomRight: [10, Math.round($("amap").clientHeight * .36)] });
+  L.tileLayer("https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1",
+    { maxZoom: 18, subdomains: "0123", attribution: "&copy; 2ГИС" }).addTo(amap);
+  for (const key of ["cells", "flats", "reports", "me"]) groups[key] = L.layerGroup().addTo(amap);
+  loadMap();
+  setInterval(() => { if ($("s-map").classList.contains("on")) loadMap(true); }, 20000);
+}
+
+async function loadMap(refresh) {
+  if (!refresh) {
+    const cells = await getJson("/api/cells", "cells");
+    groups.cells.clearLayers();
+    for (const c of (cells && cells.cells) || []) {
+      L.polygon(c.corners, { stroke: false, fillColor: MAP_COLORS[c.color], fillOpacity: .42 })
+        .bindTooltip(`${c.cell_id}: ${String(Math.round(c.median)).replace("-", "−")} дБм`, { sticky: true })
+        .addTo(groups.cells);
+    }
+  }
+  const [flats, reports] = await Promise.all([getJson("/api/listings", "listings"), getJson("/api/reports", "reportsFeed")]);
+  drawFlats((flats && flats.listings) || []);
+  groups.reports.clearLayers();
+  for (const r of (reports && reports.reports) || []) {
+    if (!REPORT_COLORS[r.level]) continue;
+    const m = L.marker([r.lat, r.lon], { icon: L.divIcon({ className: "rdot", iconSize: null }) })
+      .bindTooltip(`Житель: ${REPORT_NAMES[r.level]}${r.network ? " · " + r.network : ""}`);
+    m.on("add", () => m.getElement()?.style.setProperty("--c", REPORT_COLORS[r.level]));
+    m.addTo(groups.reports);
+  }
+}
+
+function popup(f) {
+  const box = node("div", null, "pop");
+  box.append(node("b", f.title || "Объявление"));
+  const q = node("div");
+  q.append(node("span", `Связь: ${f.quality}`, "q"), document.createTextNode(` · ${String(Math.round(f.median)).replace("-", "−")} дБм`));
+  box.append(q, node("div", `${f.site || ""} · квадрат ${f.cell_id}`));
+  const a = node("a", "Открыть объявление →");
+  a.href = f.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+  box.append(a);
+  return box;
+}
+
+function drawFlats(list) {
+  groups.flats.clearLayers();
+  for (const f of list) {
+    flatMarkers[f.url] = L.marker([f.lat, f.lon], { icon: flatIcon(MAP_COLORS[f.color] || "#9ca3af") })
+      .bindPopup(popup(f), { maxWidth: 260 }).addTo(groups.flats);
+  }
+  const good = list.filter(f => f.color === "green").sort((a, b) => b.median - a.median);
+  const rest = list.filter(f => f.color !== "green").sort((a, b) => b.median - a.median);
+  $("sh-title").textContent = good.length ? `Квартиры с хорошей связью · ${good.length}` : "Проверенные квартиры";
+  $("sh-count").textContent = list.length ? `всего проверено: ${list.length}` : "";
+  const ul = $("flats");
+  ul.replaceChildren();
+  if (!list.length) {
+    ul.append(node("li", "Пока никто не проверял квартиры. Откройте объявление на house.kg или lalafo и нажмите «Поделиться» → Сигнал.kg — квартира появится на карте с цветом связи.", "none"));
+    return;
+  }
+  for (const f of [...good, ...rest].slice(0, 30)) {
+    const li = node("li"), b = node("button"), dot = node("span", null, "dot");
+    dot.style.background = MAP_COLORS[f.color];
+    dot.style.marginTop = "6px";
+    const text = node("div");
+    text.append(node("div", f.title || "Объявление", "t"),
+      node("div", `${f.quality} · ${String(Math.round(f.median)).replace("-", "−")} дБм · ${f.site || ""}`, "m"));
+    b.append(dot, text);
+    b.addEventListener("click", () => {
+      $("sheet").classList.remove("open");
+      $("sheet").classList.add("min");
+      amap.flyTo([f.lat, f.lon], 16, { duration: .6 });
+      setTimeout(() => flatMarkers[f.url]?.openPopup(), 650);
+    });
+    li.append(b);
+    ul.append(li);
+  }
+}
+
+$("grab").addEventListener("click", () => {
+  const sheet = $("sheet");
+  if (sheet.classList.contains("min")) sheet.classList.remove("min");
+  else sheet.classList.toggle("open");
+});
+$("mtools").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+  const on = b.getAttribute("aria-pressed") !== "true";
+  b.setAttribute("aria-pressed", String(on));
+  if (on) groups[b.dataset.layer].addTo(amap); else amap.removeLayer(groups[b.dataset.layer]);
+}));
+$("locate").addEventListener("click", () => {
+  if (!window.isSecureContext || !("geolocation" in navigator)) return toast("GPS доступен только по HTTPS");
+  navigator.geolocation.getCurrentPosition(pos => {
+    const at = [pos.coords.latitude, pos.coords.longitude];
+    groups.me.clearLayers();
+    meMarker = L.marker(at, { icon: L.divIcon({ className: "me", iconSize: null }) }).bindTooltip("Вы здесь").addTo(groups.me);
+    amap.flyTo(at, 16, { duration: .6 });
+  }, err => toast(err.code === 1 ? "Разрешите доступ к геолокации" : "Не удалось определить место"),
+  { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+});
+
 /* --- вкладки --- */
 function show(name) {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x.dataset.s === name));
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === "s-" + name));
   if (name === "queue") renderQueue();
   if (name === "here" && !point) locate();  // GPS спрашиваем, только когда человек открыл этот экран
+  document.body.classList.toggle("mapmode", name === "map");
+  if (name === "map") openMap();
 }
 document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => show(b.dataset.s)));
 
@@ -467,7 +641,7 @@ $("l-complain").addEventListener("click", () => {
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).catch(() => {});
 const pendingListing = store.get("pendingListing", null);
-if (pendingListing) checkListing(pendingListing); else locate();
+if (pendingListing) checkListing(pendingListing); else show("map");
 flush();
 }
 </script>

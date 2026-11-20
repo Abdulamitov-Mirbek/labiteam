@@ -1,8 +1,9 @@
 // Service worker приложения для жителей: оболочка открывается и без сети.
 // Запросы к API не кешируются — приложение само показывает последний результат
 // и держит жалобы в очереди, пока сети нет.
-const CACHE = "signalkg-app-v2";
-const SHELL = ["/app/", "/app/manifest.webmanifest", "/app/icon.svg", "/app/icon-192.png", "/app/icon-512.png"];
+const CACHE = "signalkg-app-v3";
+const SHELL = ["/app/", "/app/manifest.webmanifest", "/app/icon.svg", "/app/icon-192.png", "/app/icon-512.png",
+  "/app/leaflet.js", "/app/leaflet.css"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

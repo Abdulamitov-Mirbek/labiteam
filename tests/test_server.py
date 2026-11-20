@@ -226,3 +226,15 @@ def test_report_out_of_area_and_limit(client):
 def test_report_too_large(client):
     body = b'{"lat": 42.86, "lon": 74.58, "level": "ok", "x": "' + b"a" * 2000 + b'"}'
     assert client.post("/api/reports", content=body).status_code == 413
+
+
+def test_cells_have_corners_for_app_map(client):
+    cell = client.get("/api/cells").json()["cells"][0]
+    assert len(cell["corners"]) == 4 and all(len(p) == 2 for p in cell["corners"])
+
+
+def test_app_serves_leaflet_and_has_map_screen(client):
+    assert client.get("/app/leaflet.js").headers["content-type"].startswith("text/javascript")
+    assert client.get("/app/leaflet.css").headers["content-type"].startswith("text/css")
+    page = client.get("/app/").text
+    assert 'id="s-map"' in page and '<script src="/app/leaflet.js"></script>' in page

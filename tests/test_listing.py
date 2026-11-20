@@ -229,3 +229,33 @@ def test_app_manifest_has_share_target(make_client):
     share = client.get("/app/manifest.webmanifest").json()["share_target"]
     assert share["action"] == "/app/" and share["method"] == "GET"
     assert share["params"] == {"title": "title", "text": "text", "url": "url"}
+
+
+# --- квартиры на карте приложения ------------------------------------------------
+
+def test_checked_listing_appears_on_app_map(make_client):
+    client, _ = make_client({HOUSE_URL: house_page(), LALAFO_URL: lalafo_page()})
+    assert client.get("/api/listings").json()["listings"] == []
+    client.get("/api/listing", params={"url": HOUSE_URL})
+    client.get("/api/listing", params={"url": LALAFO_URL})
+    client.get("/api/listing", params={"url": HOUSE_URL})  # повторная проверка не дублирует
+    flats = client.get("/api/listings").json()["listings"]
+    assert [f["url"] for f in flats] == [HOUSE_URL, LALAFO_URL]  # новые первыми
+    house = flats[0]
+    assert set(house) == {"url", "site", "title", "lat", "lon", "cell_id", "color", "quality", "median", "checked"}
+    assert house["cell_id"] == "X017_Y015" and house["color"] in ("green", "yellow", "red")
+
+
+def test_listing_outside_area_or_without_address_is_not_on_map(make_client):
+    client, _ = make_client({HOUSE_URL: house_page(lat=42.90, lon=74.62), LALAFO_URL: "<html></html>"})
+    client.get("/api/listing", params={"url": HOUSE_URL})
+    client.get("/api/listing", params={"url": LALAFO_URL})
+    assert client.get("/api/listings").json()["listings"] == []
+
+
+def test_listings_survive_restart(tmp_path):
+    fetcher = FakeFetcher({HOUSE_URL: house_page()})
+    first = TestClient(create_app(complaints_file=tmp_path / "c.jsonl", dgis_key="", listing_fetcher=fetcher))
+    first.get("/api/listing", params={"url": HOUSE_URL})
+    second = TestClient(create_app(complaints_file=tmp_path / "c.jsonl", dgis_key="", listing_fetcher=fetcher))
+    assert [f["url"] for f in second.get("/api/listings").json()["listings"]] == [HOUSE_URL]
