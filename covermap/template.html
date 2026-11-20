@@ -343,11 +343,13 @@ const inset = corners => {
   return corners.map(([a, b]) => [lat + (a - lat) * .92, lon + (b - lon) * .92]);
 };
 
+// Квадраты полупрозрачные: сквозь них видны улицы и дома подложки.
+const CELL_OPACITY = .45, PICKED_OPACITY = .6;
 const grids = {}, cellPolys = {};
 for (const key of ["all", "day", "night"]) {
   grids[key] = L.layerGroup();
   for (const c of DATA.grids[key]) {
-    const poly = L.polygon(inset(c.corners), { stroke: false, fillColor: HEX[c.color], fillOpacity: .88 })
+    const poly = L.polygon(inset(c.corners), { stroke: false, fillColor: HEX[c.color], fillOpacity: CELL_OPACITY })
       .bindTooltip(tip(`${c.id}: медиана ${fmt(c.median)} дБм, замеров ${c.samples}`), { sticky: true });
     poly.addTo(grids[key]);
     if (key === "all") cellPolys[c.id] = { poly, c };
@@ -388,8 +390,8 @@ function draw() {
   for (const { poly, c } of Object.values(cellPolys)) {
     const deep = showAnswer() && c.color === "red" && covered.has(c.id);
     poly.setStyle(picked.has(c.id)
-      ? { stroke: true, color: HEX.orange, weight: 3, fillColor: deep ? HEX.deep : HEX[c.color], fillOpacity: .92 }
-      : { stroke: false, fillColor: deep ? HEX.deep : HEX[c.color], fillOpacity: .88 });
+      ? { stroke: true, color: HEX.orange, weight: 3, fillColor: deep ? HEX.deep : HEX[c.color], fillOpacity: PICKED_OPACITY }
+      : { stroke: false, fillColor: deep ? HEX.deep : HEX[c.color], fillOpacity: CELL_OPACITY });
   }
   layer.radius.clearLayers(); layer.picks.clearLayers(); layer.cands.clearLayers();
   for (const c of DATA.candidates) {

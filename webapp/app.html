@@ -145,6 +145,7 @@ nav svg{width:22px;height:22px}
 <script>
 {
 const DEMO = { lat: 42.8687, lon: 74.604 };
+const COARSE_M = 1000;  // точнее этого — уже не GPS, а Wi-Fi/IP: квадрат 200 м не определить
 const COLORS = { green: "#1f9d55", yellow: "#e3a92b", red: "#d93636" };
 const QUALITY = { green: "Хороший сигнал", yellow: "Средний сигнал", red: "Слабый сигнал" };
 const $ = id => document.getElementById(id);
@@ -215,12 +216,19 @@ async function lookup(p) {
   $("gps").textContent = p.demo ? "демо" : `±${Math.round(p.accuracy)} м`;
   try {
     const res = await fetch(`/api/signal?lat=${p.lat}&lon=${p.lon}`, { cache: "no-store" });
-    if (res.status === 422) { showSignal(null); return setStatus("Вы вне района замеров"); }
+    if (res.status === 422) {
+      p.outside = true;
+      showSignal(null);
+      $("hint").textContent = "Замеры есть только для части центра Бишкека (около 3 × 4 км). Здесь показать нечего.";
+      return setStatus("Вы вне района замеров");
+    }
     if (!res.ok) throw new Error(res.status);
     const s = await res.json();
     store.set("last", { s, p });
     if (s.status === "ok") showSignal(s); else { showSignal(null); setStatus("Рядом пока нет замеров"); }
-    $("hint").textContent = "Медиана замеров оператора в квадрате 200 × 200 м вокруг вас.";
+    $("hint").textContent = p.accuracy > COARSE_M
+      ? `Точность ±${Math.round(p.accuracy / 1000)} км — это не GPS, а примерное место по Wi-Fi или IP. Включите GPS на телефоне.`
+      : "Медиана замеров оператора в квадрате 200 × 200 м вокруг вас.";
   } catch (e) {
     const last = store.get("last", null);
     if (last) { showSignal(last.s); $("hint").textContent = "Нет сети — показан последний результат."; }
@@ -229,13 +237,21 @@ async function lookup(p) {
 }
 
 function locate() {
-  if (store.get("demo", false)) return lookup({ ...DEMO, accuracy: 0, demo: true });
+  if (demoOn()) return lookup({ ...DEMO, accuracy: 0, demo: true });
+  point = null;
+  showSignal(null);
+  // Браузер даёт GPS только на HTTPS или localhost; по http://192.168…/app/ запрос сразу отклоняется.
+  if (!window.isSecureContext) {
+    $("hint").textContent = "Браузер даёт GPS только сайтам на HTTPS. Откройте приложение по ссылке https://… или включите демо-точку в настройках.";
+    return setStatus("GPS недоступен: нужен HTTPS");
+  }
   if (!("geolocation" in navigator)) return setStatus("Геолокация недоступна");
   setStatus("Определяем место…");
   navigator.geolocation.getCurrentPosition(
     pos => lookup({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-    err => setStatus(err.code === 1 ? "Разрешите доступ к геолокации" : "Не удалось определить место"),
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    err => setStatus(err.code === 1 ? "Разрешите доступ к геолокации"
+      : err.code === 3 ? "GPS не ответил — попробуйте ещё раз" : "Не удалось определить место"),
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 $("refresh").addEventListener("click", locate);
 
@@ -243,6 +259,8 @@ $("refresh").addEventListener("click", locate);
 function save() { store.set("reports", reports.slice(-50)); }
 $("complain").addEventListener("click", () => {
   if (!point) return toast("Сначала определите местоположение");
+  if (point.outside) return toast("Вы вне района замеров — жалобу не примут");
+  if (point.accuracy > COARSE_M) return toast("Место определено неточно — включите GPS и обновите");
   reports.push({ id: Date.now(), lat: point.lat, lon: point.lon, ts: new Date().toISOString(),
     cell: $("cell").textContent, median: $("value").textContent, status: "queued" });
   save();
@@ -305,11 +323,18 @@ function renderQueue() {
 }
 
 /* --- настройки и установка --- */
-// Ссылка /app/?demo=1 сразу включает демо-точку — для показа на защите.
+// Ссылка /app/?demo=1 включает демо-точку только для этой страницы (превью в панели, показ
+// на защите) и ничего не сохраняет: иначе после панели настоящее приложение навсегда
+// уходило на демо-точку вместо GPS. В хранилище — только выбор пользователя в настройках
+// (новый ключ: старое sg.demo могло быть записано превью панели).
 const demoParam = new URLSearchParams(location.search).get("demo");
-if (demoParam === "1" || demoParam === "0") store.set("demo", demoParam === "1");
-$("demo").checked = store.get("demo", false);
-$("demo").addEventListener("change", e => { store.set("demo", e.target.checked); locate(); });
+const demoOn = () => demoParam === "1" || (demoParam !== "0" && store.get("demoPoint", false));
+$("demo").checked = demoOn();
+$("demo").addEventListener("change", e => {
+  store.set("demoPoint", e.target.checked);
+  if (demoParam !== null) history.replaceState(null, "", location.pathname);
+  location.reload();
+});
 let installEvent = null;
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvent = e; $("install").hidden = false; });
 $("install").addEventListener("click", async () => {

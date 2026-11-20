@@ -58,20 +58,30 @@
     return node;
   }
 
-  function mount(card) {
+  let card = null;
+
+  function mount(newCard) {
+    card = newCard;
     host = document.createElement("signal-kg-badge");
     const shadow = host.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
     style.textContent = STYLE;
     shadow.append(style, card);
-    const title = document.querySelector("h1");
-    if (title && title.parentElement) {
-      title.insertAdjacentElement("afterend", host);
-    } else {
-      card.classList.add("floating");
-      document.body.append(host);
-    }
+    place();
   }
+
+  function place() {
+    const title = document.querySelector("h1");
+    card.classList.toggle("floating", !(title && title.parentElement));
+    if (title && title.parentElement) title.insertAdjacentElement("afterend", host);
+    else document.body.append(host);
+  }
+
+  // house.kg (React) через ~1 с после загрузки заменяет весь корневой блок страницы,
+  // и плашка исчезает вместе с ним. Возвращаем её под новый заголовок.
+  new MutationObserver(() => {
+    if (host && !host.isConnected && location.href === currentUrl) place();
+  }).observe(document.documentElement, { childList: true, subtree: true });
 
   function badge(color, text, meta, coords) {
     const card = el("div", null, "card");
