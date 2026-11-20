@@ -46,10 +46,14 @@ const LABELS = {
   verify_success: ["Успешная проверка", "ok"],
   verify_failed: ["Неверный код", "warn"],
   verify_no_active_code: ["Нет действующего кода", "warn"],
+  verify_expired: ["Код истёк", "warn"],
+  verify_bad_format: ["Ошибка формата", "warn"],
   send_rate_limited: ["Лимит отправки", "warn"],
+  send_while_blocked: ["Отправка при блокировке", "bad"],
   ip_rate_limited: ["Лимит по IP", "bad"],
   msisdn_blocked: ["Номер заблокирован", "bad"],
   verify_while_blocked: ["Попытка при блокировке", "bad"],
+  delivery_failed: ["Сбой доставки", "bad"],
 };
 const TILES = ["otp_issued", "verify_success", "verify_failed", "msisdn_blocked", "ip_rate_limited", "send_rate_limited"];
 const token = new URLSearchParams(location.search).get("token");
@@ -91,7 +95,7 @@ async function refresh() {
       const details = Object.entries(rest).map(([k, v]) => k + "=" + v).join(", ");
       tr.append(
         cell(new Date(ts).toLocaleTimeString("ru-RU"), "mono"),
-        cell(label, cls), cell(msisdn, "mono"), cell(ip, "mono"), cell(details),
+        cell(label, cls), cell(msisdn || "—", "mono"), cell(ip, "mono"), cell(details),
       );
       return tr;
     }));

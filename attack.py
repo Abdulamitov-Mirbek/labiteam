@@ -22,8 +22,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 MEANING = {
     200: "код угадан (!)",
+    400: "ошибка формата",
     401: "неверный код",
-    410: "нет действующего кода",
+    410: "код истёк",
     423: "номер заблокирован",
     429: "сработал лимит",
 }
@@ -43,7 +44,8 @@ def post(url: str, payload: dict) -> int:
 
 
 def random_msisdn() -> str:
-    return "9967" + f"{random.randrange(10**8):08d}"
+    # Синтетические номера: 12 цифр, начинаются с 996.
+    return "99677" + f"{random.randrange(10**7):07d}"
 
 
 def report(title: str, statuses: Counter, attempts: int, elapsed: float) -> bool:
@@ -51,8 +53,6 @@ def report(title: str, statuses: Counter, attempts: int, elapsed: float) -> bool
     print(f"попыток: {attempts}, время: {elapsed:.1f} с")
     for status, count in sorted(statuses.items()):
         print(f"  HTTP {status}: {count:5d}  — {MEANING.get(status, 'другое')}")
-    compared = statuses[401] + statuses[200]
-    print(f"  реально сверено с кодом: {compared} из {attempts}")
     breached = statuses[200] > 0
     print("  ИТОГ: " + ("АТАКА УДАЛАСЬ" if breached else "атака остановлена"))
     return breached
@@ -77,7 +77,7 @@ def single_number(base: str, attempts: int, workers: int) -> bool:
 
 
 def distributed(base: str, attempts: int, numbers: int, workers: int) -> bool:
-    victims = [random_msisdn() for _ in range(numbers)]
+    victims = random.sample([f"99677{n:07d}" for n in range(10**4)], numbers)
     sent = Counter(post(f"{base}/otp/send", {"msisdn": m}) for m in victims)
     print(f"\n{numbers} номеров: запросы кода -> {dict(sent)}")
     # По одной-две попытки на номер, чтобы не упираться в блокировку номера.

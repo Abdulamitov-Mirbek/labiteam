@@ -9,6 +9,11 @@ services:
       OTP_SECRET: ${OTP_SECRET:-}
       # Токен для /dashboard и /admin/events (пусто = без авторизации).
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # Адреса, от которых принимается X-Forwarded-For (пусто = ни от кого).
+      OTP_TRUSTED_PROXIES: ${OTP_TRUSTED_PROXIES:-}
+    volumes:
+      # «SMS-шлюз»: выдачи дописываются в ./outbox/sms.jsonl в корне репозитория.
+      - ./outbox:/srv/outbox
     depends_on:
       redis:
         condition: service_healthy
