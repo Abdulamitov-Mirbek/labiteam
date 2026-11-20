@@ -57,6 +57,14 @@ body.mapmode main{padding:0;overflow:hidden;position:relative}
 .me{width:16px!important;height:16px!important;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.2)}
 .pop b{display:block;font-size:14px;margin-bottom:4px}.pop .q{font-weight:600}.pop a{display:inline-block;margin-top:6px;color:var(--blue);font-weight:600}
 .leaflet-container{font-family:Inter,system-ui,sans-serif}
+.speedgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.speedgrid div{background:var(--soft);border-radius:12px;padding:10px 12px}
+.speedgrid small{display:block;color:var(--muted);font-size:12px}
+.speedgrid b{display:block;font-size:22px;line-height:1.2;font-variant-numeric:tabular-nums}
+.rate{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.rate button{min-height:44px;border:1px solid var(--line);background:var(--card);border-radius:12px;font:600 14px Inter,system-ui,sans-serif;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.rate button i{width:10px;height:10px;border-radius:50%}
+.rate button:disabled{opacity:.5}
 /* Подпись карты и кнопка «Где я» — над нижней панелью при любой её высоте. */
 #amap .leaflet-bottom{bottom:var(--sheet-h,34%)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
@@ -155,6 +163,25 @@ a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font
     <div style="text-align:right"><small style="color:var(--muted)">Замеров в квадрате</small><div><b id="samples" style="font-size:16px">—</b></div></div></div>
   </div>
   <div class="warn" id="weak" hidden></div>
+  <div class="card pad" style="margin-top:12px" id="speedcard">
+    <div class="row"><b>Скорость интернета здесь</b><span class="pill p-gray" id="sp-net" style="margin:0">—</span></div>
+    <div class="speedgrid">
+      <div><small>Скачивание</small><b id="sp-down">—</b><small>Мбит/с</small></div>
+      <div><small>Отдача</small><b id="sp-up">—</b><small>Мбит/с</small></div>
+      <div><small>Пинг</small><b id="sp-ping">—</b><small>мс</small></div>
+    </div>
+    <button class="btn" id="speedtest">Замерить скорость</button>
+    <p class="note" id="sp-hint" style="text-align:left">Замер вместе с вашей точкой увидит оператор на своей карте.</p>
+  </div>
+  <div class="card pad" style="margin-top:12px">
+    <b>Как здесь ловит связь?</b>
+    <div class="rate" id="rate">
+      <button data-level="good"><i style="background:#1f9d55"></i>Отлично</button>
+      <button data-level="ok"><i style="background:#e3a92b"></i>Нормально</button>
+      <button data-level="bad"><i style="background:#d93636"></i>Плохо</button>
+      <button data-level="none"><i style="background:#111827"></i>Нет связи</button>
+    </div>
+  </div>
   <div style="margin-top:16px;display:grid;gap:10px">
     <button class="btn red" id="complain">Здесь нет связи</button>
     <button class="btn ghost" id="refresh">Обновить местоположение</button>
@@ -426,6 +453,30 @@ function showSignal(s, accuracy) {
   $("weak").hidden = !weak;
   if (weak) $("weak").textContent = `В ${Math.max(50, Math.round(s.nearest_weak_m / 50) * 50)} м отсюда слабая зона.`;
 }
+// Вне района замеров оператора: что говорят жители в радиусе 300 м.
+const CROWD_NAMES = { good: "отлично", ok: "нормально", bad: "плохо", none: "нет связи" };
+async function showCrowd(p) {
+  let c = null;
+  try {
+    const res = await fetch(`/api/crowd?lat=${p.lat}&lon=${p.lon}`, { cache: "no-store" });
+    if (res.status === 422) {
+      p.outsideCity = true;
+      $("hint").textContent = "Сигнал.kg работает в Бишкеке. Здесь отметки и замеры не принимаются.";
+      return setStatus("Вы не в Бишкеке");
+    }
+    if (res.ok) c = await res.json();
+  } catch (e) { /* без сети — просто без оценки жителей */ }
+  const speed = c && c.speedtests ? ` · скорость рядом ${c.median_down_mbps} Мбит/с (${c.speedtests})` : "";
+  if (c && c.reports) {
+    $("quality").className = "pill p-" + c.color;
+    $("quality").textContent = `Жители: ${CROWD_NAMES[c.verdict]} (${c.reports})`;
+  } else {
+    setStatus(speed ? "Замеров оператора нет" : "Здесь пока нет данных");
+  }
+  $("hint").textContent = "Замеров оператора здесь нет — показываем оценку жителей в радиусе 300 м" + speed +
+    ". Замерьте скорость или отметьте связь — это увидит оператор.";
+}
+
 function setStatus(text) {
   $("quality").className = "pill p-gray";
   $("quality").textContent = text;
@@ -439,8 +490,7 @@ async function lookup(p) {
     if (res.status === 422) {
       p.outside = true;
       showSignal(null);
-      $("hint").textContent = "Замеры есть только для части центра Бишкека (около 3 × 4 км). Здесь показать нечего.";
-      return setStatus("Вы вне района замеров");
+      return showCrowd(p);
     }
     if (!res.ok) throw new Error(res.status);
     const s = await res.json();
@@ -475,11 +525,128 @@ function locate() {
 }
 $("refresh").addEventListener("click", locate);
 
+/* --- замер скорости интернета --- */
+// Основной замер — через speed.cloudflare.com: меряется интернет телефона, а не канал до
+// сервера Сигнал.kg (он может стоять на ноутбуке). Если Cloudflare недоступен — наш сервер.
+const SPEED_SERVERS = {
+  cloudflare: { ping: "https://speed.cloudflare.com/__down?bytes=0", down: n => `https://speed.cloudflare.com/__down?bytes=${n}`,
+                up: "https://speed.cloudflare.com/__up", maxDown: 25e6 },
+  signalkg: { ping: "/health", down: n => `/api/speedtest/down?bytes=${n}`, up: "/api/speedtest/up", maxDown: 5e6 },
+};
+const mbps = (bytes, ms) => bytes * 8 / (ms / 1000) / 1e6;
+const median = list => { const a = [...list].sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+
+async function timedFetch(url, options = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const t0 = performance.now();
+    const res = await fetch(url, { cache: "no-store", ...options, signal: ctrl.signal });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    await res.arrayBuffer();
+    return performance.now() - t0;
+  } finally { clearTimeout(timer); }
+}
+
+function randomBody(size) {
+  const body = new Uint8Array(size);
+  for (let i = 0; i < size; i += 65536) crypto.getRandomValues(body.subarray(i, Math.min(size, i + 65536)));
+  return body;
+}
+
+async function runSpeedtest(server, progress) {
+  const sv = SPEED_SERVERS[server];
+  progress("Пинг…");
+  const pings = [];
+  for (let i = 0; i < 5; i++) pings.push(await timedFetch(sv.ping));
+  const ping = median(pings.slice(1));  // первый запрос — установка соединения
+  progress("Скачивание…");
+  let down = 0;
+  for (let size = 250e3; size <= sv.maxDown; size *= 4) {
+    const ms = await timedFetch(sv.down(size));
+    down = Math.max(down, mbps(size, ms));
+    if (ms > 2500) break;  // хватит: замер длится уже больше 2,5 с
+  }
+  progress("Отдача…");
+  let up = null;
+  try {
+    for (let size = 250e3; size <= 4e6; size *= 4) {
+      const ms = await timedFetch(sv.up, { method: "POST", body: randomBody(size), headers: { "Content-Type": "application/octet-stream" } });
+      up = Math.max(up || 0, mbps(size, ms));
+      if (ms > 2500) break;
+    }
+  } catch (e) { /* отдача не обязательна */ }
+  return { ping_ms: Math.round(ping), down_mbps: +down.toFixed(2), up_mbps: up === null ? null : +up.toFixed(2), server };
+}
+
+let speedPending = store.get("speedPending", []);
+async function sendSpeedtests() {
+  const rest = [];
+  for (const t of speedPending) {
+    try {
+      const res = await fetch("/api/speedtests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) });
+      if (!res.ok && res.status !== 400 && res.status !== 422) rest.push(t);  // 429 и сбои — попробуем позже
+    } catch (e) { rest.push(t); }
+  }
+  speedPending = rest;
+  store.set("speedPending", speedPending);
+  return rest.length === 0;
+}
+
+$("speedtest").addEventListener("click", async () => {
+  if (!point) { toast("Сначала определяем местоположение"); return locate(); }
+  const button = $("speedtest");
+  button.disabled = true;
+  ["sp-down", "sp-up", "sp-ping"].forEach(id => $(id).textContent = "…");
+  const conn = navigator.connection || {};
+  $("sp-net").textContent = conn.type === "cellular" ? "мобильная сеть" : conn.type === "wifi" ? "Wi-Fi" : (conn.effectiveType || "сеть").toUpperCase();
+  let result = null;
+  for (const server of ["cloudflare", "signalkg"]) {
+    try { result = await runSpeedtest(server, text => button.textContent = text); break; }
+    catch (e) { /* пробуем запасной сервер */ }
+  }
+  button.disabled = false;
+  button.textContent = "Замерить ещё раз";
+  if (!result) {
+    ["sp-down", "sp-up", "sp-ping"].forEach(id => $(id).textContent = "—");
+    $("sp-hint").textContent = "Не удалось замерить: нет интернета. Проверьте сеть и попробуйте ещё раз.";
+    return;
+  }
+  $("sp-down").textContent = result.down_mbps.toFixed(1);
+  $("sp-up").textContent = result.up_mbps === null ? "—" : result.up_mbps.toFixed(1);
+  $("sp-ping").textContent = result.ping_ms;
+  const via = result.server === "cloudflare" ? "" : " (через сервер Сигнал.kg — может быть ниже реальной)";
+  if (point.demo) { $("sp-hint").textContent = "Демо-точка: замер не отправлен оператору." + via; return; }
+  if (point.outsideCity) { $("sp-hint").textContent = "Вы не в Бишкеке: замер не отправлен." + via; return; }
+  if (point.accuracy > 5000) { $("sp-hint").textContent = "Место определено слишком неточно — замер не отправлен. Включите GPS." + via; return; }
+  speedPending.push({ lat: point.lat, lon: point.lon, accuracy_m: Math.round(point.accuracy), ...result,
+    connection: ["wifi", "cellular", "ethernet"].includes(conn.type) ? conn.type : conn.type ? "other" : "unknown",
+    effective: ["slow-2g", "2g", "3g", "4g"].includes(conn.effectiveType) ? conn.effectiveType : null });
+  store.set("speedPending", speedPending);
+  const sent = await sendSpeedtests();
+  $("sp-hint").textContent = (sent ? "Замер отправлен оператору и появится на его карте." : "Нет связи с сервером — отправим замер позже.") + via;
+});
+
+/* --- «Как здесь ловит связь?» --- */
+document.querySelectorAll("#rate button").forEach(b => b.addEventListener("click", async () => {
+  if (!point) { toast("Сначала определяем местоположение"); return locate(); }
+  if (point.demo) return toast("Демо-точка: отметка не отправляется");
+  if (point.outsideCity) return toast("Вы не в Бишкеке — отметку не примут");
+  if (point.accuracy > COARSE_M) return toast("Место определено неточно — включите GPS и обновите");
+  document.querySelectorAll("#rate button").forEach(x => x.disabled = true);
+  try {
+    const res = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: point.lat, lon: point.lon, level: b.dataset.level, network: null, source: "app" }) });
+    toast(res.ok ? "Спасибо! Отметка передана оператору" : res.status === 429 ? "Слишком много отметок — попробуйте через минуту" : "Не удалось отправить");
+  } catch (e) { toast("Нет сети — попробуйте позже"); }
+  setTimeout(() => document.querySelectorAll("#rate button").forEach(x => x.disabled = false), 1500);
+}));
+
 /* --- жалобы и очередь --- */
 function save() { store.set("reports", reports.slice(-50)); }
 $("complain").addEventListener("click", () => {
   if (!point) return toast("Сначала определите местоположение");
-  if (point.outside) return toast("Вы вне района замеров — жалобу не примут");
+  if (point.outsideCity) return toast("Вы не в Бишкеке — жалобу не примут");
   if (point.accuracy > COARSE_M) return toast("Место определено неточно — включите GPS и обновите");
   reports.push({ id: Date.now(), lat: point.lat, lon: point.lon, ts: new Date().toISOString(),
     cell: $("cell").textContent, median: $("value").textContent, status: "queued" });
@@ -491,6 +658,7 @@ $("complain").addEventListener("click", () => {
 let sending = false;
 async function flush() {
   if (sending || !navigator.onLine) return renderQueue();
+  if (speedPending.length) sendSpeedtests();
   sending = true;
   for (const r of reports.filter(r => r.status === "queued")) {
     try {
@@ -498,7 +666,7 @@ async function flush() {
         body: JSON.stringify({ lat: r.lat, lon: r.lon, source: "app", ...(r.site ? { site: r.site } : {}) }) });
       if (res.ok) { r.status = "sent"; toast("Жалоба передана оператору"); }
       else if (res.status === 429) { toast("Слишком много жалоб — отправим позже"); break; }
-      else { r.status = "rejected"; r.reason = res.status === 422 ? "вне района" : "ошибка"; }
+      else { r.status = "rejected"; r.reason = res.status === 422 ? "не в Бишкеке" : "ошибка"; }
     } catch (e) { break; }  // сети нет — оставляем в очереди
   }
   sending = false;

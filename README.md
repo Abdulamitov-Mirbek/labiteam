@@ -86,6 +86,8 @@ DGIS_KEY=ваш-ключ python -m server        # http://127.0.0.1:8000
 | `POST /api/reports {lat, lon, level, network, source, site}` | отметка жителя «как ловит связь»: `level` — good, ok, bad или none |
 | `GET /api/reports?after=ID` | отметки новее ID — вкладка «Сигналы» и карта |
 | `GET /api/crowd?lat=&lon=` | оценка жителей в радиусе 300 м — для домов вне района замеров |
+| `POST /api/speedtests {lat, lon, accuracy_m, down_mbps, up_mbps, ping_ms, server, connection, effective}` | замер скорости интернета из приложения |
+| `GET /api/speedtests?after=ID` | замеры скорости — вкладка «Замеры» у оператора |
 | `GET /api/listings` | квартиры, проверенные через «Поделиться» или плагин, — карта в приложении |
 | `GET /api/complaints?after=ID` | жалобы новее ID и число отклонённых лимитом — панель опрашивает раз в 3 секунды |
 
