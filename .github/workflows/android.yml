@@ -21,9 +21,11 @@ jobs:
 
       - name: Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Установить платформу и build-tools
-        run: yes | sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null
+        run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" >/dev/null
 
       - name: Сборка debug APK
         working-directory: android
