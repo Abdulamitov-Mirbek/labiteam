@@ -4,22 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LABI · Tolkun</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>/*FONTS_CSS*/</style>
 <style>/*LEAFLET_CSS*/</style>
 <style>
 :root{color-scheme:light;
 --bg:#f3f4f6;--card:#fff;--line:#e5e7eb;--ink:#111827;--muted:#6b7280;--soft:#f6f7f9;--nav:#111a2e;
 --blue:#2563eb;--indigo:#4338ca;--green:#1f9d55;--yellow:#e3a92b;--red:#d93636;--deep:#7a1f2b;--orange:#ea580c;
---pinkbg:#fdeeee;--yelbg:#fff8e6;--grnbg:#eefaf2;--yelink:#8a5a07}
+--pinkbg:#fdeeee;--yelbg:#fff8e6;--grnbg:#eefaf2;--yelink:#8a5a07;
+--display:"Space Grotesk",Inter,system-ui,sans-serif}
 *{box-sizing:border-box;min-width:0}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip;display:flex;flex-direction:column}
 .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px}
 nav{background:var(--nav);color:#fff;display:flex;align-items:center;gap:6px;padding:10px max(2vw,16px);flex-wrap:wrap;flex:none}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;margin-right:18px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;margin-right:18px;font-family:var(--display);letter-spacing:-.01em;font-size:16px}
 .logo{width:30px;height:30px;border-radius:8px;background:var(--blue);display:grid;place-items:center}
-nav a{color:#d6dbe6;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:500}
+nav a{color:#d6dbe6;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:500;position:relative;transition:background-color .18s,color .18s}
+nav a:hover{background:rgba(255,255,255,.07);color:#fff}
+nav a::after{content:"";position:absolute;left:12px;right:12px;bottom:3px;height:2px;border-radius:2px;background:var(--blue);transform:scaleX(0);transform-origin:center;transition:transform .2s ease}
+nav a:hover::after{transform:scaleX(1)}
 nav a.on{background:#24304a;color:#fff}
+@media (prefers-reduced-motion:reduce){nav a,nav a::after{transition:none}}
 .status{margin-left:auto;color:#cfd6e3;font-size:13px;display:flex;align-items:center;gap:8px}
 @media(max-width:1500px){.status span{display:none}}
 .live{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block}
@@ -33,15 +41,15 @@ main{flex:1;min-height:0;overflow:auto}
 .view{display:none}.view.on{display:block}
 #v-map.on{height:100%}
 .page{max-width:1240px;margin:0 auto;padding:28px max(3vw,16px) 40px}
-h1{font-size:clamp(26px,3vw,32px);line-height:1.1;letter-spacing:-.02em;margin:0 0 4px}
-h2{font-size:17px;margin:0}
+h1{font-family:var(--display);font-size:clamp(26px,3vw,32px);line-height:1.1;letter-spacing:-.02em;margin:0 0 4px}
+h2{font-family:var(--display);font-size:17px;margin:0}
 .sub{color:var(--muted);font-size:13.5px}
 .label{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin:18px 0 8px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
 .pad{padding:16px 18px}
 .row{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(11em,1fr));gap:12px;margin:18px 0}
-.stat b{display:block;font-size:30px;font-weight:700;line-height:1.15}
+.stat b{display:block;font-family:var(--display);font-size:30px;font-weight:700;line-height:1.15;letter-spacing:-.01em}
 .stat small{color:var(--muted);font-size:12.5px}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tile{border-radius:12px;padding:12px 14px;border:1px solid}
