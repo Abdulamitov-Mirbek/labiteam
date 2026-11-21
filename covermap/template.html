@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LABI · Tolkun</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>/*FONTS_CSS*/</style>
 <style>/*LEAFLET_CSS*/</style>
 <style>
@@ -849,6 +846,11 @@ $("p-states").innerHTML = [
 
 /* --- установка панели --- */
 if (DATA.live) {
+  // Space Grotesk — только для онлайн-панели; офлайн-карта (out/map.html) самодостаточна (Inter).
+  const gf = document.createElement("link");
+  gf.rel = "stylesheet";
+  gf.href = "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap";
+  document.head.append(gf);
   // Service worker — чтобы панель открывалась без сети. Кнопку установки панели убрали.
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {});
 }

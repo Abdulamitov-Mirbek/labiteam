@@ -80,6 +80,26 @@ LEVELS = {"good": "green", "ok": "yellow", "bad": "red", "none": "red"}
 NETWORKS = {"2G", "3G", "4G", "5G"}
 LISTINGS_PER_MINUTE = 20       # проверок объявлений с одного IP
 
+# Content-Security-Policy. script-src с 'unsafe-inline' — приложение собрано из инлайновых
+# скриптов; cdn.jsdelivr.net нужен только Swagger (/api/docs). Карта: тайлы (img https:),
+# шрифты Google, пинг до speed.cloudflare.com.
+CSP = (
+    "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+    "form-action 'self'; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "connect-src 'self' https://speed.cloudflare.com"
+)
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": CSP,
+    "Permissions-Policy": "geolocation=(self), camera=(), microphone=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+
 
 def error(status: int, code: str, detail: str, **headers) -> JSONResponse:
     return JSONResponse({"error": code, "detail": detail}, status_code=status, headers=headers or None)
@@ -324,9 +344,8 @@ def create_app(
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
         return response
 
     def client_ip(request: Request) -> str:
