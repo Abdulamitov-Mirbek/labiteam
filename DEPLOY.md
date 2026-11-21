@@ -1,6 +1,6 @@
-# Деплой Сигнал.kg на сервер RUBA
+# Деплой Tolkun на сервер RUBA
 
-Сервер `ruba.memorymee.org` (209.97.143.25) уже держит боевой сайт RUBA. Сигнал.kg ставится
+Сервер `ruba.memorymee.org` (209.97.143.25) уже держит боевой сайт RUBA. Tolkun ставится
 **отдельным** docker-проектом и **не трогает** `/opt/ruba` и его контейнеры. Порты наружу не
 публикуются — HTTPS даёт Caddy RUBA по сети `ruba_default`.
 
@@ -23,7 +23,7 @@ docker compose -f docker-compose.prod.yml ps
 ## HTTPS через Caddy RUBA
 
 Caddy терминирует TLS для всех сайтов и настраивается **в репозитории RUBA**, а не на сервере.
-Чтобы открыть Сигнал.kg по HTTPS:
+Чтобы открыть Tolkun по HTTPS:
 
 Домен проекта: **tolkun.online**.
 

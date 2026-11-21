@@ -1,4 +1,4 @@
-"""API и панель оператора «Сигнал.kg».
+"""API и панель оператора «Tolkun».
 
 GET  /                     панель оператора (карта, «Что если», игра, жалобы)
 GET  /api/signal?lat=&lon= качество связи в точке — для Chrome-плагина
@@ -308,7 +308,7 @@ def create_app(
         for c in report.cells
     ]
 
-    app = FastAPI(title="Сигнал.kg", docs_url="/api/docs", redoc_url=None)
+    app = FastAPI(title="Tolkun", docs_url="/api/docs", redoc_url=None)
     app.state.report = report
     app.state.complaints = Complaints(complaints_file)
     app.state.reports = Reports(reports_file)

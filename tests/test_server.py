@@ -1,4 +1,4 @@
-"""Тесты API «Сигнал.kg» и поиска сигнала по координатам."""
+"""Тесты API «Tolkun» и поиска сигнала по координатам."""
 from pathlib import Path
 
 import pytest

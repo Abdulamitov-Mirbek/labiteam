@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LABI · Сигнал.kg</title>
+<title>LABI · Tolkun</title>
 <style>/*FONTS_CSS*/</style>
 <style>/*LEAFLET_CSS*/</style>
 <style>
@@ -140,7 +140,7 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
 </head>
 <body>
 <nav>
-  <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a8 8 0 0 1 12 0M4.5 9.5a4.5 4.5 0 0 1 7 0" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="8" cy="12" r="1.6" fill="#fff"/></svg></span>LABI · Сигнал.kg</div>
+  <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a8 8 0 0 1 12 0M4.5 9.5a4.5 4.5 0 0 1 7 0" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="8" cy="12" r="1.6" fill="#fff"/></svg></span>LABI · Tolkun</div>
   <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#signals" data-v="signals">Сигналы</a><a href="#speed" data-v="speed">Замеры</a><a href="#flats" data-v="flats">Квартиры</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#data" data-v="data">Данные</a>
   <div class="status"><i class="live" id="live-dot"></i><span id="live-text"></span><button class="btn" id="install-panel" hidden style="background:#24304a;border-color:#24304a;color:#fff">Установить панель</button><button class="btn dark" id="export">Скопировать result.json</button></div>
 </nav>
@@ -826,7 +826,7 @@ function describe(s) {
   if (s.color !== "red" && s.nearest_weak_m != null && s.nearest_weak_m <= 300) parts.push(`⚠️ в ${Math.max(50, Math.round(s.nearest_weak_m / 50) * 50)} м слабая зона`);
   return parts.join(" · ");
 }
-const badge = (c, t, meta, btn) => `<div class="badge" style="--c:${c}"><div class="t"><b>📶 Сигнал.kg</b> ${esc(t)}${meta ? `<small>${esc(meta)}</small>` : ""}</div>${btn ? `<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="send" style="background:var(--blue);border-color:var(--blue);color:#fff">Отправить сигнал</button><button class="nosig">Здесь нет связи</button></span>` : ""}</div>`;
+const badge = (c, t, meta, btn) => `<div class="badge" style="--c:${c}"><div class="t"><b>📶 Tolkun</b> ${esc(t)}${meta ? `<small>${esc(meta)}</small>` : ""}</div>${btn ? `<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="send" style="background:var(--blue);border-color:var(--blue);color:#fff">Отправить сигнал</button><button class="nosig">Здесь нет связи</button></span>` : ""}</div>`;
 const ex = DATA.plugin_example;
 $("p-main").innerHTML = ex && ex.status === "ok"
   ? badge(HEX[ex.color], describe(ex), `Медиана замеров в квадрате ${ex.cell_id} · ${ex.samples} замеров`, true)
