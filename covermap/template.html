@@ -142,7 +142,7 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
 <nav>
   <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a8 8 0 0 1 12 0M4.5 9.5a4.5 4.5 0 0 1 7 0" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="8" cy="12" r="1.6" fill="#fff"/></svg></span>LABI · Tolkun</div>
   <a href="#map" data-v="map">Карта</a><a href="#complaints" data-v="complaints">Жалобы</a><a href="#signals" data-v="signals">Сигналы</a><a href="#speed" data-v="speed">Замеры</a><a href="#flats" data-v="flats">Квартиры</a><a href="#plugin" data-v="plugin">Плагин</a><a href="#data" data-v="data">Данные</a>
-  <div class="status"><i class="live" id="live-dot"></i><span id="live-text"></span><button class="btn" id="install-panel" hidden style="background:#24304a;border-color:#24304a;color:#fff">Установить панель</button><a class="btn" href="/tolkun.apk" download style="background:#1d4ed8;border-color:#1d4ed8;color:#fff;text-decoration:none">Приложение (APK)</a><button class="btn dark" id="export">Скопировать result.json</button></div>
+  <div class="status"><i class="live" id="live-dot"></i><span id="live-text"></span><a class="btn" href="/tolkun.apk" download style="background:#1d4ed8;border-color:#1d4ed8;color:#fff;text-decoration:none">Приложение (APK)</a><button class="btn dark" id="export">Скопировать result.json</button></div>
 </nav>
 <main>
 <section class="view" id="v-map">
@@ -841,21 +841,8 @@ $("p-states").innerHTML = [
 
 /* --- установка панели --- */
 if (DATA.live) {
-  // Манифест и service worker нужны, чтобы панель ставилась как программа.
-  const manifest = document.createElement("link");
-  manifest.rel = "manifest";
-  manifest.href = "manifest.webmanifest";
-  document.head.append(manifest);
+  // Service worker — чтобы панель открывалась без сети. Кнопку установки панели убрали.
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {});
-  let installEvent = null;
-  addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvent = e; $("install-panel").hidden = false; });
-  $("install-panel").addEventListener("click", async () => {
-    if (!installEvent) return;
-    installEvent.prompt();
-    await installEvent.userChoice;
-    installEvent = null;
-    $("install-panel").hidden = true;
-  });
 }
 
 /* --- данные --- */
