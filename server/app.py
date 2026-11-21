@@ -356,6 +356,14 @@ def create_app(
         headers = {"Cache-Control": "no-cache"} if name == "sw.js" else None
         return FileResponse(path, media_type=media_type, headers=headers)
 
+    @app.get("/tolkun.apk", include_in_schema=False)
+    async def android_apk():
+        # Нативное Android-приложение: тот же интерфейс + реальный замер dBm модема.
+        apk = WEBAPP / "tolkun.apk"
+        if not apk.exists():
+            return error(404, "not_found", "APK ещё не собран")
+        return FileResponse(apk, media_type="application/vnd.android.package-archive", filename="tolkun.apk")
+
     @app.get("/manifest.webmanifest", include_in_schema=False)
     async def panel_manifest():
         return FileResponse(WEBAPP / "panel.webmanifest", media_type="application/manifest+json")
