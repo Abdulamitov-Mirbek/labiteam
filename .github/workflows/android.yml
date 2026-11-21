@@ -31,6 +31,17 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Проверка APK (валидный и устанавливаемый)
+        working-directory: android
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          echo "размер: $(stat -c%s "$APK") байт"
+          echo "=== состав ==="
+          unzip -l "$APK" | grep -iE "AndroidManifest.xml|classes.dex|resources.arsc|CERT.RSA"
+          echo "=== badging (пакет / активность / разрешения) ==="
+          AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
+          "$AAPT" dump badging "$APK" | grep -iE "^package:|launchable-activity:|uses-permission:|sdkVersion:|targetSdkVersion:"
+
       - name: Выложить APK как артефакт
         uses: actions/upload-artifact@v4
         with:
