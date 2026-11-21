@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Сигнал.kg — связь в объявлениях",
-  "version": "1.0.0",
+  "name": "Tolkun — связь в объявлениях",
+  "version": "1.1.0",
   "description": "Показывает качество мобильной связи в объявлениях house.kg и lalafo.kg и принимает жалобы «Здесь нет связи».",
   "host_permissions": [
     "https://house.kg/*",
     "https://www.house.kg/*",
     "https://lalafo.kg/*",
     "https://www.lalafo.kg/*",
+    "https://tolkun.online/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
   ],

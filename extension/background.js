@@ -1,7 +1,7 @@
-// Сервисный воркер: единственное место, которое ходит в API «Сигнал.kg».
+// Сервисный воркер: единственное место, которое ходит в API «Tolkun».
 // Content script не делает сетевых запросов к API сам: так ему не нужен CORS,
 // а сайт объявления никак не может обратиться к API от имени плагина.
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://tolkun.online";
 
 function validPoint(message) {
   return Number.isFinite(message.lat) && Number.isFinite(message.lon);

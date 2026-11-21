@@ -1,4 +1,4 @@
-// Плашка «Сигнал.kg» в объявлении. Вся разметка собирается через createElement
+// Плашка «Tolkun» в объявлении. Вся разметка собирается через createElement
 // и textContent — без innerHTML, чтобы на чужом сайте не было XSS. Стили живут
 // в Shadow DOM и не конфликтуют со стилями страницы.
 (function () {
@@ -103,7 +103,7 @@
     card.style.setProperty("--c", COLORS[color] || COLORS.none);
     const body = el("div", null, "text");
     const line = el("div");
-    line.append(el("span", "📶 Сигнал.kg", "brand"), document.createTextNode(text));
+    line.append(el("span", "📶 Tolkun", "brand"), document.createTextNode(text));
     body.append(line);
     if (meta) body.append(el("div", meta, "meta"));
     card.append(body);
