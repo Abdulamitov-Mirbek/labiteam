@@ -62,6 +62,12 @@ body.mapmode main{padding:0;overflow:hidden;position:relative}
 .me{width:16px!important;height:16px!important;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.2)}
 .pop b{display:block;font-size:14px;margin-bottom:4px}.pop .q{font-weight:600}.pop a{display:inline-block;margin-top:6px;color:var(--blue);font-weight:600}
 .leaflet-container{font-family:Inter,system-ui,sans-serif}
+.modem{display:grid;grid-template-columns:auto 1fr;align-items:baseline;column-gap:10px;margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:var(--soft)}
+.modem b{font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+.modem span{font-weight:600}
+.modem small{grid-column:1/-1;color:var(--muted);font-size:12.5px;margin-top:4px}
+.modem.top{margin:0 0 12px;padding:16px 18px;background:var(--card)}
+.modem.top b{font-size:44px}
 .autogrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 4px}
 .autogrid div{background:var(--soft);border-radius:12px;padding:10px 12px}
 .autogrid small{display:block;color:var(--muted);font-size:12px}
@@ -189,6 +195,10 @@ a.link{display:inline-block;margin-top:8px;color:var(--blue);font-size:14px;font
       <div><small>Сеть</small><b id="a-net">—</b></div>
       <div><small>Задержка</small><b id="a-ping">—</b><small>мс</small></div>
       <div><small>Скорость</small><b id="a-down">—</b><small>Мбит/с, оценка</small></div>
+    </div>
+    <div class="modem" id="a-modem" hidden>
+      <b id="a-dbm">—</b><span>дБм с модема телефона</span>
+      <small id="a-modem-note">обновляется сам каждые 2 секунды</small>
     </div>
     <p class="note" id="a-hint" style="text-align:left">Меряем сами, как только определили ваше место, и отправляем оператору.</p>
   </div>
@@ -612,14 +622,54 @@ function autoColor(ping, effective) {
   return "green";
 }
 // В APK (WebView) нативный слой отдаёт реальный dBm модема — браузер этого не умеет.
+// Мост APK (window.AndroidSignal): уровень сигнала, который приложение само читает с модема.
+// Возвращает { dbm, network, source } или { error } — тогда понятно, почему значения нет.
+const MODEM_ERRORS = {
+  no_permission: "Разрешите приложению доступ к телефону и геолокации: Настройки → Приложения → Tolkun → Разрешения.",
+  no_sim: "Нет SIM-карты или она не готова — уровень мобильного сигнала не получить.",
+  no_signal: "Модем сейчас не отдаёт уровень сигнала — нет мобильной сети? Включите мобильные данные.",
+  no_telephony: "На этом устройстве нет модема мобильной связи.",
+  failed: "Не удалось прочитать сигнал модема.",
+};
 function nativeSignal() {
+  if (!window.AndroidSignal || typeof AndroidSignal.read !== "function") return null;
   try {
-    if (!window.AndroidSignal || typeof AndroidSignal.read !== "function") return null;
     const r = JSON.parse(AndroidSignal.read());
     if (r && Number.isFinite(r.dbm) && r.dbm >= -140 && r.dbm <= -44)
-      return { dbm: Math.round(r.dbm), network: ["2G", "3G", "4G", "5G"].includes(r.network) ? r.network : null };
-  } catch (e) {}
-  return null;
+      return { dbm: Math.round(r.dbm), network: ["2G", "3G", "4G", "5G"].includes(r.network) ? r.network : null, source: r.source || null };
+    return { error: (r && MODEM_ERRORS[r.error]) ? r.error : "no_signal" };
+  } catch (e) {
+    return { error: "failed" };
+  }
+}
+const modemColor = dbm => dbm >= -90 ? "green" : dbm < -105 ? "red" : "yellow";
+// В APK показываем сигнал с модема сразу и обновляем каждые 2 секунды — без GPS и без кнопок.
+function showModem() {
+  const m = nativeSignal();
+  if (!m) return;
+  $("a-modem").hidden = false;
+  if (m.error) {
+    $("a-dbm").textContent = "—";
+    $("a-dbm").style.color = "";
+    $("a-modem-note").textContent = MODEM_ERRORS[m.error];
+    return;
+  }
+  $("a-dbm").textContent = String(m.dbm).replace("-", "−");
+  $("a-dbm").style.color = COLORS[modemColor(m.dbm)];
+  $("a-modem-note").textContent = `${m.network ? m.network + " · " : ""}${QUALITY[modemColor(m.dbm)].toLowerCase()} · обновляется сам каждые 2 секунды`;
+}
+const IN_APK = !!window.AndroidSignal;
+if (IN_APK) {
+  // Главное в APK — живой сигнал с модема: ставим его первым на экране «Связь здесь».
+  const box = $("a-modem");
+  box.classList.add("card", "top");
+  $("s-here").prepend(box);
+  showModem();
+  setInterval(showModem, 2000);
+  // В APK замер автоматический — ручной ввод не нужен.
+  document.addEventListener("DOMContentLoaded", () => { const m = $("measure"); if (m) m.hidden = true; });
+  const manual = document.getElementById("measure");
+  if (manual) manual.hidden = true;
 }
 let autoRunning = false;
 async function autoMeasure(p) {
@@ -629,7 +679,8 @@ async function autoMeasure(p) {
     const conn = navigator.connection || {};
     const type = ["cellular", "wifi", "ethernet"].includes(conn.type) ? conn.type : conn.type ? "other" : "unknown";
     const effective = ["slow-2g", "2g", "3g", "4g"].includes(conn.effectiveType) ? conn.effectiveType : null;
-    const native = nativeSignal();  // реальный dBm из APK, если приложение открыто в нём
+    const reading = nativeSignal();  // реальный дБм из APK, если приложение открыто в нём
+    const native = reading && !reading.error ? reading : null;
     $("a-net").textContent = type === "cellular" ? "Мобильная" : type === "wifi" ? "Wi-Fi" : type === "ethernet" ? "Кабель"
       : effective ? effective.toUpperCase() : "—";
     $("a-down").textContent = Number.isFinite(conn.downlink) ? conn.downlink.toFixed(1) : "—";
@@ -647,8 +698,8 @@ async function autoMeasure(p) {
     $("a-verdict").className = "pill p-" + color;
     $("a-verdict").textContent = AUTO_LABEL[color];
     if (native) {
-      $("a-verdict").className = "pill p-" + (native.dbm >= -90 ? "green" : native.dbm < -105 ? "red" : "yellow");
-      $("a-verdict").textContent = native.dbm + " дБм" + (native.network ? " · " + native.network : "");
+      $("a-verdict").className = "pill p-" + modemColor(native.dbm);
+      $("a-verdict").textContent = String(native.dbm).replace("-", "−") + " дБм" + (native.network ? " · " + native.network : "");
       if (native.network) $("a-net").textContent = native.network;
     }
     const time = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -663,7 +714,7 @@ async function autoMeasure(p) {
       return void ($("a-hint").textContent = `В этом месте замер уже отправлен в ${last.time}. Следующий — через 5 минут или в 100 м отсюда.`);
     }
     const body = native
-      ? { method: "manual", lat: p.lat, lon: p.lon, accuracy_m: Math.round(p.accuracy), rsrp_dbm: native.dbm, network: native.network }
+      ? { method: "modem", lat: p.lat, lon: p.lon, accuracy_m: Math.round(p.accuracy), rsrp_dbm: native.dbm, network: native.network }
       : { method: "auto", lat: p.lat, lon: p.lon, accuracy_m: Math.round(p.accuracy), ping_ms: ping,
           rtt_ms: Number.isFinite(conn.rtt) ? conn.rtt : null, downlink_mbps: Number.isFinite(conn.downlink) ? conn.downlink : null,
           effective, connection: type };
@@ -671,7 +722,9 @@ async function autoMeasure(p) {
       const res = await fetch("/api/measurements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (res.ok) {
         store.set("autoLast", { lat: p.lat, lon: p.lon, t: Date.now(), time });
-        $("a-hint").textContent = `Отправлено оператору в ${time} — он видит замер на своей карте.`;
+        $("a-hint").textContent = native
+          ? `Сигнал с модема (${String(native.dbm).replace("-", "−")} дБм) отправлен оператору в ${time}.`
+          : `Отправлено оператору в ${time} — он видит замер на своей карте.`;
       } else {
         $("a-hint").textContent = res.status === 429 ? "Слишком много замеров — следующий отправим позже." : "Сервер не принял замер.";
       }
@@ -912,7 +965,7 @@ $("l-complain").addEventListener("click", () => {
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).catch(() => {});
 const pendingListing = store.get("pendingListing", null);
-if (pendingListing) checkListing(pendingListing); else show("map");
+if (pendingListing) checkListing(pendingListing); else show(IN_APK ? "here" : "map");
 flush();
 }
 </script>

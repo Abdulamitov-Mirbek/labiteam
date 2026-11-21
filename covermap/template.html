@@ -244,6 +244,7 @@ pre{background:var(--soft);border-radius:8px;padding:12px;font:12.5px/1.5 "JetBr
       <div class="card pad"><h2>Как читать</h2><ol>
         <li>дБм — уровень сигнала с экрана телефона жителя (Android: «Состояние SIM-карты»). Та же шкала, что RSRP в замерах оператора.</li>
         <li>Если дБм нет — палочки: 3–4 хорошо, 2 средне, 0–1 слабо.</li>
+        <li>«с модема» — APK сам прочитал уровень сигнала с модема телефона (RSRP для 4G). Самые точные замеры жителей.</li>
         <li>«авто» — замер без участия жителя: задержка до сервера и оценка сети браузером. До 150 мс и 4G — хорошо, больше 400 мс или 2G — слабо. Замеры по Wi-Fi не принимаются.</li>
         <li>«Хуже карты» — житель видит сигнал слабее, чем медиана квадрата: квадрат стоит перемерить.</li>
         <li>«Вне района» — там, где у оператора нет замеров: это единственные данные.</li></ol></div>
@@ -690,8 +691,8 @@ function renderSpeed() {
   const worse = tests.filter(t => vsMap(t) === -1), outside = tests.filter(t => !t.cell_id);
   const withDbm = tests.filter(t => t.rsrp_dbm != null), mDbm = med(withDbm.map(t => t.rsrp_dbm));
   const weak = tests.filter(t => t.color === "red");
-  const autos = tests.filter(t => t.method === "auto").length;
-  $("s-stats").innerHTML = [["Получено", tests.length, `автоматически: ${autos}, вручную: ${tests.length - autos}`, ""],
+  const autos = tests.filter(t => t.method === "auto").length, modems = tests.filter(t => t.method === "modem").length;
+  $("s-stats").innerHTML = [["Получено", tests.length, `с модема (APK): ${modems}, авто: ${autos}, вручную: ${tests.length - autos - modems}`, ""],
     ["Медиана жителей", mDbm == null ? "—" : fmt(Math.round(mDbm)), "дБм", mDbm != null ? `color:${HEX[color(mDbm)]}` : ""],
     ["Слабая связь", weak.length, "< −105 дБм, 0–1 палочка или пинг > 400 мс", weak.length ? "color:var(--red)" : ""],
     ["Хуже, чем на карте", worse.length, `вне района замеров: ${outside.length}`, worse.length ? "color:var(--red)" : ""]]
@@ -702,7 +703,7 @@ function renderSpeed() {
       const m = medianOf[t.cell_id], v = vsMap(t);
       return `<tr><td class="mono">${esc(new Date(t.ts).toLocaleTimeString("ru-RU"))}</td>
       <td class="mono">${t.cell_id ? esc(t.cell_id) : `<span class="pill p-gry">вне района</span>`}</td>
-      <td class="num"><i class="dot" style="background:${HEX[t.color]}"></i><b>${esc(strength(t))}</b>${t.method === "auto" ? ` <span class="pill p-blue">авто</span>` : t.rsrp_dbm != null && t.bars != null ? ` <span class="pill p-gry">${t.bars}/4</span>` : ""}</td>
+      <td class="num"><i class="dot" style="background:${HEX[t.color]}"></i><b>${esc(strength(t))}</b>${t.method === "auto" ? ` <span class="pill p-blue">авто</span>` : t.method === "modem" ? ` <span class="pill p-green">с модема</span>` : t.rsrp_dbm != null && t.bars != null ? ` <span class="pill p-gry">${t.bars}/4</span>` : ""}</td>
       <td class="num">${m === undefined ? "—" : `<i class="dot" style="background:${HEX[color(m)]}"></i>${fmt(m)}`}</td>
       <td>${v === null ? `<span class="pill p-gry">Нет замеров</span>` : `<span class="pill ${VERSUS[v][1]}">${VERSUS[v][0]}</span>`}</td>
       <td>${t.method === "auto" ? `${esc(AUTO_NET[t.connection] || "—")}${t.effective ? ` <span class="pill p-gry">${esc(t.effective.toUpperCase())}</span>` : ""}`

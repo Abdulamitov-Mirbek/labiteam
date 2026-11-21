@@ -378,3 +378,20 @@ def test_auto_measurement_color(client, change, color):
 ])
 def test_auto_measurement_bad_fields(client, change):
     assert client.post("/api/measurements", json={**AUTO, **change}).status_code == 400
+
+
+# --- замер из APK: уровень сигнала с модема, без ввода руками -------------------------
+
+MODEM = {"lat": 42.8687, "lon": 74.604, "accuracy_m": 9, "method": "modem", "rsrp_dbm": -101, "network": "4G"}
+
+
+def test_modem_measurement(client):
+    r = client.post("/api/measurements", json=MODEM)
+    assert r.status_code == 201
+    m = r.json()
+    assert (m["method"], m["rsrp_dbm"], m["network"], m["color"], m["cell_id"]) == ("modem", -101, "4G", "yellow", "X017_Y015")
+
+
+@pytest.mark.parametrize("change", [{"rsrp_dbm": None}, {"rsrp_dbm": -20}, {"rsrp_dbm": "сильный"}, {"network": "6G"}])
+def test_modem_measurement_bad_fields(client, change):
+    assert client.post("/api/measurements", json={**MODEM, **change}).status_code == 400

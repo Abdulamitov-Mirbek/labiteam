@@ -10,9 +10,9 @@
 git pull origin main
 python -m venv .venv                                  # один раз, если папки .venv ещё нет
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest -q               # должно быть: 179 passed
+.\.venv\Scripts\python.exe -m pytest -q               # должно быть: 184 passed
 node --test "extension/tests/*.test.js"               # должно быть: pass 7, fail 0
-node --test e2e/mobile.e2e.mjs                         # мобильная версия в Chrome: pass 15, fail 0
+node --test e2e/mobile.e2e.mjs                         # мобильная версия в Chrome: pass 17, fail 0
 ```
 
 На macOS/Linux: `.venv/bin/python` вместо `.\.venv\Scripts\python.exe`.
@@ -128,6 +128,24 @@ node --test e2e/mobile.e2e.mjs                         # мобильная ве
 - Вкладка «Приложение» убрана намеренно — она путала. Вместе с ней удалены `/api/info` и
   превью в iframe; сервер отдаёт `X-Frame-Options: DENY`. Не возвращайте iframe приложения.
 - Квадраты сетки полупрозрачные: константы `CELL_OPACITY` (0.45) и `PICKED_OPACITY` (0.6).
+
+**APK (`android/`) — сигнал с модема автоматически**
+- `MainActivity` открывает `https://tolkun.online/app/` во WebView и даёт странице мост
+  `window.AndroidSignal.read()`: `{dbm, network, source}` или `{error: no_permission | no_sim |
+  no_signal | no_telephony | failed}`. Сигнал берётся по порядку: подписка на изменения сигнала
+  (`TelephonyCallback`, на Android 10–11 — `PhoneStateListener`; на многих телефонах
+  `getSignalStrength()` пуст, пока нет подписки) → `getSignalStrength()` → `getAllCellInfo()`.
+  Для 4G — RSRP, для 5G — SS-RSRP.
+- Разрешения: **точную и приблизительную геолокацию просим вместе** — на Android 12+ запрос одной
+  `ACCESS_FINE_LOCATION` система молча игнорирует (так и было: место не определялось, дБм не читался).
+- Страница в APK открывается на «Связь здесь», показывает дБм с модема первым блоком и обновляет его
+  каждые 2 с без GPS и кнопок; ручной ввод спрятан. Замер уходит оператору как `method: "modem"`
+  («с модема» во вкладке «Замеры»).
+- Подпись: постоянный отладочный ключ `android/debug.keystore` (пароль `android`) — иначе каждая
+  сборка GitHub подписывала APK новым ключом и обновление не ставилось поверх («Приложение не
+  установлено»). Перед первой установкой этой версии старую нужно один раз удалить.
+- Готовый APK — артефакт сборки GitHub `signalkg-meter-apk`; положить его в `webapp/tolkun.apk`.
+  Страница берётся с боевого сайта, поэтому правки `webapp/` работают в APK только после деплоя.
 
 **Сгенерированные файлы (`out/`)**
 - `main.py` при каждом запуске меняет в `out/report.json` только время работы алгоритмов (`ms`).

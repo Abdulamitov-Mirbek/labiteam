@@ -141,6 +141,11 @@ class Page {
     return this.eval(`(() => { const el = document.querySelector(${sel}); if (!el) throw new Error("нет элемента " + ${sel}); el.click(); return true; })()`);
   }
   visible(selector) { return this.eval(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden"; })()`); }
+  // Мост APK: window.AndroidSignal.read() отдаёт то, что лежит в window.__modem (меняем из теста).
+  apkBridge(initial) {
+    return this.send("Page.addScriptToEvaluateOnNewDocument", { source:
+      `window.__modem = ${JSON.stringify(JSON.stringify(initial))}; window.AndroidSignal = { read: () => window.__modem };` });
+  }
   offline(on) { return this.send("Network.emulateNetworkConditions", { offline: on, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); }
   async shot(name) {
     if (!SHOTS) return;
@@ -340,6 +345,47 @@ describe("мобильная версия /app/", () => {
     assert.equal(await page.text("#gps"), "±249 км");
     await waitFor(async () => /не отправлен/.test(await page.text("#a-hint")), "«замер не отправлен»");
     assert.equal((await api("/api/measurements")).measurements.length, before);
+    await page.close();
+  });
+
+  test("APK: сигнал с модема виден сразу, обновляется сам и уходит оператору «с модема»", async () => {
+    const at = { lat: 42.8560, lon: 74.5950 };
+    const page = await (await browser.page(base)).setup({ geo: at });
+    await page.apkBridge({ dbm: -101, network: "4G", source: "listener" });
+    await page.open(base + "/app/");
+    // В APK стартовый экран — «Связь здесь», ручной ввод спрятан.
+    assert.equal(await page.eval(`document.querySelector("nav button.on")?.dataset.s`), "here");
+    assert.equal(await page.eval(`document.querySelector("#measure").hidden`), true);
+    await waitFor(async () => (await page.text("#a-dbm")) === "−101", "−101 дБм с модема");
+    assert.match(await page.text("#a-modem-note"), /4G/);
+    const m = await waitFor(async () => (await api("/api/measurements")).measurements
+      .find(x => x.method === "modem" && Math.abs(x.lat - at.lat) < 1e-6), "замер «с модема» на сервере");
+    assert.equal(m.rsrp_dbm, -101);
+    assert.equal(m.network, "4G");
+    await waitFor(async () => /Сигнал с модема \(−101 дБм\) отправлен/.test(await page.text("#a-hint")), "подсказка об отправке");
+    // Сигнал поменялся — экран обновился сам, без кнопок.
+    await page.eval(`window.__modem = JSON.stringify({ dbm: -87, network: "5G", source: "listener" })`);
+    await waitFor(async () => (await page.text("#a-dbm")) === "−87", "обновление до −87 дБм");
+    assert.match(await page.text("#a-modem-note"), /5G/);
+    await page.shot("11-apk-modem");
+    assert.deepEqual(page.errors, []);
+    await page.close();
+
+    const panel = await (await browser.page(base)).setup({ width: 1400, height: 900 });
+    await panel.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+    await panel.open(base + "/#speed");
+    await waitFor(async () => /с модема/.test(await panel.text("#s-table")), "«с модема» у оператора");
+    assert.match(await panel.text("#s-table"), /−101 дБм/);
+    await panel.close();
+  });
+
+  test("APK без разрешений: понятная причина вместо пустоты", async () => {
+    const page = await (await browser.page(base)).setup({ geo: IN_AREA });
+    await page.apkBridge({ error: "no_permission" });
+    await page.open(base + "/app/");
+    await waitFor(async () => /Разрешите приложению доступ/.test(await page.text("#a-modem-note")), "подсказка про разрешения");
+    assert.equal(await page.text("#a-dbm"), "—");
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 

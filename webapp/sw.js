@@ -1,7 +1,7 @@
 // Service worker приложения для жителей: оболочка открывается и без сети.
 // Запросы к API не кешируются — приложение само показывает последний результат
 // и держит жалобы в очереди, пока сети нет.
-const CACHE = "signalkg-app-v6";
+const CACHE = "signalkg-app-v7";
 const SHELL = ["/app/", "/app/manifest.webmanifest", "/app/icon.svg", "/app/icon-192.png", "/app/icon-512.png",
   "/app/leaflet.js", "/app/leaflet.css"];
 

@@ -277,6 +277,15 @@ def parse_manual(fields: dict) -> dict | None:
             "color": signal_color(rsrp, bars)}
 
 
+def parse_modem(fields: dict) -> dict | None:
+    """Замер из APK: уровень сигнала, который приложение само прочитало с модема телефона."""
+    rsrp = _number_in(fields.get("rsrp_dbm"), *RSRP_RANGE)
+    network = fields.get("network")
+    if rsrp is None or (network is not None and network not in NETWORKS):
+        return None
+    return {"rsrp_dbm": round(rsrp, 1), "bars": None, "network": network, "color": signal_color(rsrp, None)}
+
+
 def parse_auto(fields: dict) -> dict | None:
     """Автозамер: задержка до сервера замера и то, что браузер сообщает о сети."""
     ping = _number_in(fields.get("ping_ms"), 0, 20000)
@@ -535,13 +544,15 @@ def create_app(
         method = fields.get("method", "manual")
         if method == "auto":
             values = parse_auto(fields)
+        elif method == "modem":
+            values = parse_modem(fields)
         elif method == "manual":
             values = parse_manual(fields)
         else:
             values = None
         if values is None:
             return error(400, "bad_request",
-                         "ручной замер: rsrp_dbm от −140 до −44 или bars 0–4; автозамер: ping_ms и данные сети")
+                         "manual: rsrp_dbm от −140 до −44 или bars 0–4; modem: rsrp_dbm; auto: ping_ms и данные сети")
         if not in_city(lat, lon):
             return error(422, "out_of_city", "точка вне Бишкека")
         wait = app.state.measurements.allow(client_ip(request))
